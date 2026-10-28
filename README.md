@@ -44,6 +44,29 @@ pytest
 
 Request bodies are never logged or stored. Always run Uvicorn with `--no-access-log`. Validation errors do not echo the submitted text back.
 
+### Check the AI key (T05)
+
+Put `ANTHROPIC_API_KEY` in `api/.env`, then:
+
+```bash
+cd api && source .venv/bin/activate
+python scripts/check_ai_key.py
+```
+
+### Deploy to Cloud Run (T10)
+
+Needs the gcloud CLI and a GCP project with billing on.
+
+```bash
+cd api
+gcloud run deploy sauti-api --source . --region europe-west1 \
+  --memory 2Gi --allow-unauthenticated \
+  --set-env-vars CORS_ORIGINS=https://<pages-domain> \
+  --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest
+```
+
+Keep the key in Secret Manager (`anthropic-api-key`), never in `--set-env-vars`. Privacy rules for the backend are in [docs/privacy-and-redaction.md](docs/privacy-and-redaction.md).
+
 ### Docker
 
 ```bash

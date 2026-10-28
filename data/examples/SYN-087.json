@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "case_id": "SYN-087",
+  "source": "synthetic",
+  "split": "held_out",
+  "platform": "Uber",
+  "notice_text": "Your account has been deactivated because your cancellation rate is above the limit in your city.",
+  "narrative": "they blocked me for cancelling but most of those the pin was wrong or the client told me to cancel. last week 3 trips in Kayole the client said cancel he will get another car. i have the chats",
+  "evidence_held": [
+    "SUSPENSION_NOTICE",
+    "IN_APP_CHAT"
+  ],
+  "style": [
+    "very_short",
+    "upset"
+  ],
+  "language": "english",
+  "labels": {
+    "case_type": "rating_or_cancellation",
+    "entities": [
+      {
+        "text": "last week",
+        "label": "DATE",
+        "start": 100,
+        "end": 109
+      },
+      {
+        "text": "Kayole",
+        "label": "LOCATION",
+        "start": 121,
+        "end": 127
+      }
+    ],
+    "pii": [],
+    "evidence_missing": [
+      "RATING_SCREENSHOT",
+      "CANCELLED_TRIPS_LIST"
+    ],
+    "policy_rules": [
+      "LN120_REG15_1",
+      "LN120_REG13_1_B",
+      "DPA_S26_S35",
+      "UBER_KE_DEACTIVATION_REVIEW"
+    ]
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "case_id": "SYN-014",
+  "source": "synthetic",
+  "split": "build",
+  "platform": "Bolt",
+  "notice_text": "Your account has been temporarily restricted following a rider report. We will review and get back to you.",
+  "narrative": "On Friday 9 October around 8:40pm I picked a client at Westlands going to South B. Halfway she said change to Kitengela. I told her the fare will go up and she said ok. At the end the app showed KSh 1,850, she paid KSh 900 on M-Pesa and said that's what the first price was. She reported me. Trip ID ends 7Q2K.",
+  "evidence_held": [
+    "SUSPENSION_NOTICE",
+    "MPESA_RECEIPT"
+  ],
+  "style": [
+    "calm"
+  ],
+  "language": "english",
+  "labels": {
+    "case_type": "fare_dispute",
+    "entities": [
+      {
+        "text": "Friday 9 October",
+        "label": "DATE",
+        "start": 3,
+        "end": 19
+      },
+      {
+        "text": "8:40pm",
+        "label": "TIME",
+        "start": 27,
+        "end": 33
+      },
+      {
+        "text": "Westlands",
+        "label": "LOCATION",
+        "start": 55,
+        "end": 64
+      },
+      {
+        "text": "South B",
+        "label": "LOCATION",
+        "start": 74,
+        "end": 81
+      },
+      {
+        "text": "Kitengela",
+        "label": "LOCATION",
+        "start": 110,
+        "end": 119
+      },
+      {
+        "text": "KSh 1,850",
+        "label": "MONEY",
+        "start": 195,
+        "end": 204
+      },
+      {
+        "text": "KSh 900",
+        "label": "MONEY",
+        "start": 215,
+        "end": 222
+      },
+      {
+        "text": "7Q2K",
+        "label": "TRIP_ID",
+        "start": 305,
+        "end": 309
+      }
+    ],
+    "pii": [],
+    "evidence_missing": [
+      "TRIP_RECEIPT",
+      "IN_APP_CHAT",
+      "ROUTE_MAP"
+    ],
+    "policy_rules": [
+      "LN120_REG15_1",
+      "LN120_REG13_1_B",
+      "DPA_S26_S35",
+      "BOLT_KE_CL12",
+      "BOLT_KE_CL13",
+      "BOLT_KE_CL16_8"
+    ]
+  }
+}

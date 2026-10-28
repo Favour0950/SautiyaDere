@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "case_id": "SYN-042",
+  "source": "synthetic",
+  "split": "build",
+  "platform": "Bolt",
+  "notice_text": null,
+  "narrative": "Nilikuwa nachukua mteja stage ya Westlands around 9:30 PM on Tuesday. Alikataa kulipa 450 ya M-Pesa kwa sababu ya traffic drop-off kwa gate. Nilipomwambia anilipe akateta akasemaataniripoti kwa app.",
+  "evidence_held": [],
+  "style": [
+    "upset"
+  ],
+  "language": "mixed",
+  "labels": {
+    "case_type": "fare_dispute",
+    "entities": [
+      {
+        "text": "stage ya Westlands",
+        "label": "LOCATION",
+        "start": 24,
+        "end": 42
+      },
+      {
+        "text": "9:30 PM",
+        "label": "TIME",
+        "start": 50,
+        "end": 57
+      },
+      {
+        "text": "Tuesday",
+        "label": "DATE",
+        "start": 61,
+        "end": 68
+      },
+      {
+        "text": "450",
+        "label": "MONEY",
+        "start": 86,
+        "end": 89
+      }
+    ],
+    "pii": [],
+    "evidence_missing": [
+      "SUSPENSION_NOTICE",
+      "TRIP_RECEIPT",
+      "MPESA_RECEIPT",
+      "IN_APP_CHAT",
+      "ROUTE_MAP"
+    ],
+    "policy_rules": [
+      "LN120_REG15_1",
+      "LN120_REG13_1_B",
+      "DPA_S26_S35",
+      "BOLT_KE_CL12",
+      "BOLT_KE_CL13",
+      "BOLT_KE_CL16_8"
+    ]
+  }
+}
