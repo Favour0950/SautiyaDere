@@ -1,4 +1,4 @@
-# data/
+# Data (`data/`)
 
 | File | What it is | Task |
 |---|---|---|
@@ -8,8 +8,10 @@
 | `case_rules.py` | Draft checklists and policy rule IDs, replaced by `checklists.json` (T07) and `policies.json` (T08) | T07, T08 |
 | `generate.py` | Synthetic case generator, writes `synthetic/cases.jsonl` | T11 |
 | `tests/` | Tests for all of the above | |
+| `knowledge/` | Evidence checklists and policy knowledge base (`checklists.json`, `policies.json`) | T07, T08 |
+| `real/` | Optional local copy of real cases for testing. Gitignored, never committed | |
 
-Real driver cases never go here; they stay in the private team Drive folder.
+Real driver cases are never committed. The source copy stays in the private team Drive folder.
 
 ## Setup
 

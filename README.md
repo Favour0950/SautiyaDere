@@ -1,76 +1,44 @@
-# Sauti-ya-Dere-innovation-project
+# Sauti ya Dere
+
 A project to help drivers who are facing account suspensions develop appeal reports as a way of recourse.
 
-## Folders
+## Project structure
 
-| Folder | What goes in it |
-|---|---|
-| `app/` | PWA front end (Vite + React), deployed to Cloudflare Pages |
-| `api/` | FastAPI backend, deployed to Google Cloud Run |
-| `data/` | Case record schema, evidence checklists, policy knowledge base, synthetic case generator |
-| `models/` | Classifier experiments and evaluation results |
+Everyone uses this structure, on every branch.
 
-## Running the backend locally
-
-Needs Python 3.14. Everything installs inside a virtual environment (`api/.venv`).
-
-```bash
-cd api
-python3.14 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-
-cp ../.env.example .env        # then fill in values
-uvicorn app.main:app --reload --no-access-log --env-file .env
+```
+sauti-ya-dere/
+├── README.md      this file, the only markdown outside docs/
+├── .env.example   template for local secrets (copy to .env, never commit .env)
+├── docs/          all documentation
+├── data/          datasets, schema, knowledge base, and the scripts that make or check them
+├── web/           PWA front end (Vite + React), deployed to Cloudflare Pages
+├── api/           FastAPI backend, deployed to Google Cloud Run
+└── models/        classifier experiments
 ```
 
-Then open http://localhost:8000/health or the interactive docs at http://localhost:8000/docs.
-
-Run the tests:
-
-```bash
-cd api
-pytest
-```
-
-### Endpoints
-
-| Method | Path | What it does |
+| Folder | What goes in it | What does not |
 |---|---|---|
-| GET | `/health` | Returns `{"status": "ok"}` |
-| POST | `/analyze` | Stub for now. Takes `narrative`, optional `notice_text`, `platform`, `evidence_held`; returns a placeholder result |
+| `docs/` | Every `.md` file except this one. See [docs/README.md](docs/README.md) | |
+| `data/` | Data files, the case schema, checklists and policies, and scripts that generate or validate data | Application code. Real driver data is never committed |
+| `web/` | Front end code, its config and tests | Markdown files |
+| `api/` | Backend code, its config, Dockerfile and tests | Markdown files |
+| `models/` | Training and evaluation code for the classifiers | Model weights (gitignored), markdown files |
 
-### Privacy
+Adding a new top-level folder needs team agreement first.
 
-Request bodies are never logged or stored. Always run Uvicorn with `--no-access-log`. Validation errors do not echo the submitted text back.
+## How we work
 
-### Check the AI key (T05)
+- Each developer works on their own branch, `dev-<name>`, and PRs finished features into `dev`.
+- `dev` is merged into `main` when it is stable, usually once per sprint.
+- Full details: [docs/branching.md](docs/branching.md).
 
-Put `ANTHROPIC_API_KEY` in `api/.env`, then:
+## Getting started
 
-```bash
-cd api && source .venv/bin/activate
-python scripts/check_ai_key.py
-```
-
-### Deploy to Cloud Run (T10)
-
-Needs the gcloud CLI and a GCP project with billing on.
-
-```bash
-cd api
-gcloud run deploy sauti-api --source . --region europe-west1 \
-  --memory 2Gi --allow-unauthenticated \
-  --set-env-vars CORS_ORIGINS=https://<pages-domain> \
-  --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest
-```
-
-Keep the key in Secret Manager (`anthropic-api-key`), never in `--set-env-vars`. Privacy rules for the backend are in [docs/privacy-and-redaction.md](docs/privacy-and-redaction.md).
-
-### Docker
-
-```bash
-cd api
-docker build -t sauti-api .
-docker run -p 8080:8080 --env-file .env sauti-api
-```
+| To work on | Read |
+|---|---|
+| Backend | [docs/api.md](docs/api.md) |
+| Front end | [docs/web.md](docs/web.md) |
+| Data | [docs/data.md](docs/data.md) |
+| Models | [docs/models.md](docs/models.md) |
+| Privacy rules (everyone) | [docs/privacy-and-redaction.md](docs/privacy-and-redaction.md) |

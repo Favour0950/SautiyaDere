@@ -27,8 +27,23 @@ def test_analyze_stub_accepts_valid_body():
     assert res.status_code == 200
     data = res.json()
     assert data["stub"] is True
-    assert data["case_type"] is None
+    assert data["classification"]["case_type"] is None
+    assert data["classification"]["needs_confirmation"] is True
     assert data["entities"] == []
+    assert data["evidence"]["missing"] == []
+    assert data["appeal"]["policy_rules"] == []
+
+
+def test_analyze_response_has_all_sections():
+    data = client.post("/analyze", json={"narrative": "x"}).json()
+    assert set(data) == {
+        "stub",
+        "redacted_narrative",
+        "classification",
+        "entities",
+        "evidence",
+        "appeal",
+    }
 
 
 def test_analyze_rejects_missing_narrative():
