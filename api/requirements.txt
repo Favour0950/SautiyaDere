@@ -1,0 +1,4 @@
+fastapi==0.156.2
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+anthropic>=1,<2  # pin to the installed version after first install
