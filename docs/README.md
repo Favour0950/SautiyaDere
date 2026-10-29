@@ -6,6 +6,7 @@ Every markdown file in the project lives here, except the root `README.md`.
 
 | Doc | What it covers |
 |---|---|
+| [architecture.md](architecture.md) | Pipeline, classifier benchmark, who owns what, safeguards |
 | [branching.md](branching.md) | How we use `dev-<developer>`, `dev` and `main` |
 | [api.md](api.md) | Backend: run locally, endpoints, deploy |
 | [web.md](web.md) | PWA front end |
