@@ -1,0 +1,116 @@
+{
+  "PAYMENT_EARNINGS_HOLD": {
+    "required": [
+      {
+        "item": "Trip ID & In-App Receipt Screenshot",
+        "source": "NTSA LN 120 Reg 12(4) & Platform Terms (Uber/Bolt/Faras/Yego/Little)"
+      },
+      {
+        "item": "M-Pesa Statement / Cash Payment Confirmation",
+        "source": "TAWU Financial Dispute Checklist & Platform Earnings Policy"
+      }
+    ],
+    "optional": [
+      {
+        "item": "GPS Route & Google Maps Timeline Log",
+        "source": "TAWU Appeal Best Practice & Platform Distance Dispute Terms"
+      },
+      {
+        "item": "In-App Chat / Customer Call Screenshot",
+        "source": "TAWU Grievance Protocol (Fare Agreement)"
+      }
+    ]
+  },
+  "FRAUD_ACCUSATION": {
+    "required": [
+      {
+        "item": "Deactivation Notice / App Fraud Warning Screen",
+        "source": "NTSA LN 120 Reg 15(1) & Uber/Bolt/Little Fraud Policies"
+      },
+      {
+        "item": "Chronological Trip Log & Explanation",
+        "source": "TAWU Legal Guidance on Algorithmic Locks"
+      }
+    ],
+    "optional": [
+      {
+        "item": "Google Maps Location History Export",
+        "source": "TAWU Anti-Algorithmic Bias Protocol"
+      },
+      {
+        "item": "Passenger M-Pesa Receipt for Cash Trip",
+        "source": "Little Cab / Faras Financial Audit Terms"
+      }
+    ]
+  },
+  "SAFETY_INCIDENT": {
+    "required": [
+      {
+        "item": "Incident Details & Exact Timestamp Log",
+        "source": "NTSA LN 120 Reg 11(e) & Reg 18(2)"
+      },
+      {
+        "item": "Official Police Abstract (if crash, injury, or assault occurred)",
+        "source": "NTSA LN 120 Reg 11(b) & TAWU Safety Protocol"
+      }
+    ],
+    "optional": [
+      {
+        "item": "Dashcam Footage (Audio/Video Log)",
+        "source": "NTSA LN 120 Reg 18(1) & Platform Safety Guidelines"
+      },
+      {
+        "item": "Third-Party / Security Guard / Witness Statement",
+        "source": "TAWU Incident Defense Protocol"
+      }
+    ]
+  },
+  "CONDUCT_COMPLAINT": {
+    "required": [
+      {
+        "item": "In-App Conversation / Call Activity Screenshot",
+        "source": "Platform Community Guidelines & TAWU Note"
+      },
+      {
+        "item": "Written Driver Counter-Statement",
+        "source": "NTSA LN 120 Reg 15 Due Process Mandate"
+      }
+    ],
+    "optional": [
+      {
+        "item": "Dashcam Clip showing interaction",
+        "source": "TAWU Appeals Standard"
+      },
+      {
+        "item": "Historical Driver Star Rating & Compliment History",
+        "source": "Uber / Bolt / Yego Quality Review Terms"
+      }
+    ]
+  },
+  "ACCOUNT_INTEGRITY": {
+    "required": [
+      {
+        "item": "Valid Kenyan National ID & Driver License",
+        "source": "NTSA LN 120 Reg 21(a)"
+      },
+      {
+        "item": "Valid PSV Badge & Police Clearance Certificate (Good Conduct)",
+        "source": "NTSA LN 120 Reg 21(b) & Little/Faras Onboarding Standards"
+      },
+      {
+        "item": "Valid Vehicle Inspection Certificate & PSV Insurance Cover",
+        "source": "NTSA LN 120 Reg 15(1)(a-b)"
+      }
+    ],
+    "optional": [
+      {
+        "item": "Real-Time Clear Selfie Photo",
+        "source": "Uber Real-Time ID / Bolt Selfie Verification Standard"
+      },
+      {
+        "item": "Vehicle Photos (Front, Back, Dashboard, Interior)",
+        "source": "NTSA Reg 15 Maintenance & Platform Onboarding Checklist"
+      }
+    ]
+  }
+}
