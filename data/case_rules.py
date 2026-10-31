@@ -32,12 +32,10 @@ def load_checklists(file_path: Path = DATA_DIR / "checklists.json") -> dict:
         for section_key, items in sections.items():
             normalized_items = []
             for item in items:
-                # Extract string item_id if item is a dictionary to prevent unhashable dict errors
                 raw_id = item.get("item_id", "") if isinstance(item, dict) else str(item)
                 normalized_items.append(normalize_evidence_id(raw_id))
             normalized_sections[section_key] = normalized_items
         
-        # Raw json key & Uppercase enum key
         checklists[cat_key] = normalized_sections
         std_cat = normalize_category(cat_key)
         checklists[std_cat] = normalized_sections
@@ -56,6 +54,10 @@ def load_checklists(file_path: Path = DATA_DIR / "checklists.json") -> dict:
                     checklists[target_key] = checklists[src]
                     break
 
+    # Provide empty checklist schema for out_of_scope to prevent KeyError in generate.py
+    if "out_of_scope" not in checklists:
+        checklists["out_of_scope"] = {"required": [], "optional": []}
+
     return checklists
 
 def load_policies(file_path: Path = DATA_DIR / "policies.json") -> dict:
@@ -73,9 +75,15 @@ def load_policies(file_path: Path = DATA_DIR / "policies.json") -> dict:
 CHECKLISTS = load_checklists()
 POLICIES = load_policies()
 
-def policy_rules(case_type: str = None, platform: str = None) -> dict:
-    """Callable wrapper returning policy rules for generator compatibility."""
-    return POLICIES
+def policy_rules(case_type: str = None, platform: str = None) -> list:
+    """Returns a list of matching rule ID strings for generator and schema validation."""
+    rule_ids = []
+    for category, rules in POLICIES.items():
+        if isinstance(rules, list):
+            for r in rules:
+                if isinstance(r, dict) and "rule_id" in r:
+                    rule_ids.append(r["rule_id"])
+    return rule_ids
 
 def missing_evidence(case_type: str, present_evidence: list, checklists: dict = None) -> list:
     source_checklists = checklists if checklists is not None else CHECKLISTS
@@ -85,7 +93,6 @@ def missing_evidence(case_type: str, present_evidence: list, checklists: dict = 
         source_checklists.get(cat, {}).get("required", [])
     )
     
-    # Extract string IDs if present_evidence contains dictionaries or raw strings
     present_set = set()
     for e in present_evidence:
         raw_id = e.get("item_id", "") if isinstance(e, dict) else str(e)
