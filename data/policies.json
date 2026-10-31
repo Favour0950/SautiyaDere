@@ -1,79 +1,83 @@
 {
   "statutory_rules": [
     {
+      "rule_id": "POL-NTSA-13",
+      "jurisdiction": "KENYA_NTSA",
+      "statute": "NTSA Legal Notice 120 of 2022",
+      "clause": "Regulation 13(1)(b)",
+      "title": "Platform Fare and Commission Transparency Mandate",
+      "summary": "Requires transport network companies to provide clear fare calculation breakdowns and transparent commission deductions without arbitrary withholding."
+    },
+    {
       "rule_id": "POL-NTSA-15",
       "jurisdiction": "KENYA_NTSA",
       "statute": "NTSA Legal Notice 120 of 2022",
       "clause": "Regulation 15(1)",
       "title": "Fair Administrative Action & Deactivation Due Process",
-      "summary": "Transport Network Companies must provide clear written notice, detailed grounds, and a fair opportunity for the driver to present evidence before account deactivation or suspension.",
-      "source_url": "https://www.parliament.go.ke"
+      "summary": "Mandates written notification and reasonable opportunity for driver response prior to permanent suspension or account deactivation."
     },
     {
       "rule_id": "POL-NTSA-18",
       "jurisdiction": "KENYA_NTSA",
       "statute": "NTSA Legal Notice 120 of 2022",
-      "clause": "Regulation 18",
-      "title": "Driver Safety Duties & Customer Conduct",
-      "summary": "Establishes standard safety obligations for drivers and protects drivers against baseless passenger claims when passenger misconduct occurs.",
-      "source_url": "https://www.parliament.go.ke"
+      "clause": "Regulation 18(1)-(2)",
+      "title": "Driver Safety and Incident Reporting Protocol",
+      "summary": "Establishes emergency response obligations and safety reporting procedures for platform operators and drivers during on-trip incidents."
     },
     {
       "rule_id": "POL-NTSA-21",
       "jurisdiction": "KENYA_NTSA",
       "statute": "NTSA Legal Notice 120 of 2022",
-      "clause": "Regulation 21",
-      "title": "PSV Licensing and Vehicle Compliance Standards",
-      "summary": "Mandates valid PSV licensing, police clearance (Good Conduct), commercial insurance, and official NTSA roadworthiness inspection certificates.",
-      "source_url": "https://www.parliament.go.ke"
+      "clause": "Regulation 21(a)-(b)",
+      "title": "Driver Verification & PSV Compliance Standards",
+      "summary": "Sets statutory requirements for valid PSV licensing, police clearance (Good Conduct), and vehicle inspection compliance."
+    },
+    {
+      "rule_id": "POL-DPA-26",
+      "jurisdiction": "KENYA_DPA",
+      "statute": "Data Protection Act 2019",
+      "clause": "Sections 26 & 35",
+      "title": "Right to Explanation on Automated Account Deactivations",
+      "summary": "Grants data subjects the right not to be subject to purely automated decision-making and entitles drivers to human review of algorithmic bans."
+    }
+  ],
+  "platform_rules": [
+    {
+      "rule_id": "POL-BOLT-12",
+      "platform": "BOLT",
+      "clause": "Terms for Drivers Section 12",
+      "title": "Service Suspension & Account Review Procedures",
+      "summary": "Outlines temporary hold conditions for investigation of driver complaints or safety reports."
+    },
+    {
+      "rule_id": "POL-BOLT-13",
+      "platform": "BOLT",
+      "clause": "Terms for Drivers Section 13",
+      "title": "Fare Adjustments & Earnings Discrepancy Claims",
+      "summary": "Provides mechanism for submitting trip receipts and cash payment evidence within specified time windows."
+    },
+    {
+      "rule_id": "POL-BOLT-16",
+      "platform": "BOLT",
+      "clause": "Terms for Drivers Section 16.8",
+      "title": "Termination Appeal & Evidence Review Window",
+      "summary": "Defines driver rights to present counter-evidence prior to final contract termination."
+    },
+    {
+      "rule_id": "POL-UBER-01",
+      "platform": "UBER",
+      "clause": "Uber Community Guidelines & Deactivation Policy",
+      "title": "Fraud Detection and Account Deactivation Review",
+      "summary": "Specifies investigation protocols for flagged GPS anomalies, account sharing suspicions, or promotional abuse."
     }
   ],
   "union_protocols": [
     {
       "rule_id": "POL-TAWU-01",
-      "organization": "TAWU",
-      "clause": "Grievance Protocol Cl. 4",
-      "title": "Union Representation & Independent Dispute Review",
-      "summary": "TAWU members are entitled to formal union advocacy and independent manual review when automated algorithmic deactivations occur without human review."
-    }
-  ],
-  "platform_rules": [
-    {
-      "rule_id": "POL-UBER-01",
-      "platform": "UBER",
-      "clause": "Community Guidelines & Deactivation Policy",
-      "title": "Fraud Detection & Real-Time Photo Verification",
-      "summary": "Outlines anti-fraud triggers including GPS route manipulation, account sharing, and real-time selfie check failures.",
-      "source_url": "https://help.uber.com"
-    },
-    {
-      "rule_id": "POL-BOLT-12",
-      "platform": "BOLT",
-      "clause": "Terms for Drivers Section 12 & 16",
-      "title": "Service Suspension & Fare Dispute Resolution",
-      "summary": "Governs fare recalculations, offline payment disputes, and suspension procedures for alleged policy violations.",
-      "source_url": "https://bolt.eu/en-ke/legal/"
-    },
-    {
-      "rule_id": "POL-FARAS-01",
-      "platform": "FARAS",
-      "clause": "Driver Agreement Section 5",
-      "title": "Fare Integrity and System Discrepancies",
-      "summary": "Regulates fare adjustments and requires M-Pesa or cash transaction receipts for trip verification."
-    },
-    {
-      "rule_id": "POL-YEGO-01",
-      "platform": "YEGO",
-      "clause": "Driver Code of Conduct",
-      "title": "Cash Reconciliation and PSV Maintenance",
-      "summary": "Requires timely M-Pesa fare reconciliation and strict compliance with NTSA document renewals."
-    },
-    {
-      "rule_id": "POL-LITTLE-01",
-      "platform": "LITTLE_CAB",
-      "clause": "Partner Terms & Safety Policy",
-      "title": "Document Expiration and Passenger Safety Audits",
-      "summary": "Mandates immediate document re-upload upon expiry and formal review processes for rider safety flags."
+      "union": "TAWU",
+      "clause": "Grievance Protocol Clause 4",
+      "title": "Union Representation & Formal Appeals Procedure",
+      "summary": "Establishes Transport and Allied Workers Union advocacy rights and structured appeal presentation standard."
     }
   ]
 }
