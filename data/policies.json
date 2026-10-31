@@ -1,0 +1,104 @@
+{
+  "statutory_rules": [
+    {
+      "rule_id": "POL-NTSA-13",
+      "jurisdiction": "KENYA_NTSA",
+      "statute": "NTSA Legal Notice 120 of 2022",
+      "clause": "Regulation 13(1)(b)",
+      "title": "Platform Fare and Commission Transparency Mandate",
+      "summary": "Requires transport network companies to provide clear fare calculation breakdowns and transparent commission deductions without arbitrary withholding."
+    },
+    {
+      "rule_id": "POL-NTSA-15",
+      "jurisdiction": "KENYA_NTSA",
+      "statute": "NTSA Legal Notice 120 of 2022",
+      "clause": "Regulation 15(1)",
+      "title": "Fair Administrative Action & Deactivation Due Process",
+      "summary": "Mandates written notification and reasonable opportunity for driver response prior to permanent suspension or account deactivation."
+    },
+    {
+      "rule_id": "POL-NTSA-18",
+      "jurisdiction": "KENYA_NTSA",
+      "statute": "NTSA Legal Notice 120 of 2022",
+      "clause": "Regulation 18(1)-(2)",
+      "title": "Driver Safety and Incident Reporting Protocol",
+      "summary": "Establishes emergency response obligations and safety reporting procedures for platform operators and drivers during on-trip incidents."
+    },
+    {
+      "rule_id": "POL-NTSA-21",
+      "jurisdiction": "KENYA_NTSA",
+      "statute": "NTSA Legal Notice 120 of 2022",
+      "clause": "Regulation 21(a)-(b)",
+      "title": "Driver Verification & PSV Compliance Standards",
+      "summary": "Sets statutory requirements for valid PSV licensing, police clearance (Good Conduct), and vehicle inspection compliance."
+    },
+    {
+      "rule_id": "POL-DPA-26",
+      "jurisdiction": "KENYA_DPA",
+      "statute": "Data Protection Act 2019",
+      "clause": "Sections 26 & 35",
+      "title": "Right to Explanation on Automated Account Deactivations",
+      "summary": "Grants data subjects the right not to be subject to purely automated decision-making and entitles drivers to human review of algorithmic bans."
+    }
+  ],
+  "platform_rules": [
+    {
+      "rule_id": "POL-BOLT-12",
+      "platform": "BOLT",
+      "clause": "Terms for Drivers Section 12",
+      "title": "Service Suspension & Account Review Procedures",
+      "summary": "Outlines temporary hold conditions for investigation of driver complaints or safety reports."
+    },
+    {
+      "rule_id": "POL-BOLT-13",
+      "platform": "BOLT",
+      "clause": "Terms for Drivers Section 13",
+      "title": "Fare Adjustments & Earnings Discrepancy Claims",
+      "summary": "Provides mechanism for submitting trip receipts and cash payment evidence within specified time windows."
+    },
+    {
+      "rule_id": "POL-BOLT-16",
+      "platform": "BOLT",
+      "clause": "Terms for Drivers Section 16.8",
+      "title": "Termination Appeal & Evidence Review Window",
+      "summary": "Defines driver rights to present counter-evidence prior to final contract termination."
+    },
+    {
+      "rule_id": "POL-UBER-01",
+      "platform": "UBER",
+      "clause": "Uber Community Guidelines & Deactivation Policy",
+      "title": "Fraud Detection and Account Deactivation Review",
+      "summary": "Specifies investigation protocols for flagged GPS anomalies, account sharing suspicions, or promotional abuse."
+    },
+    {
+      "rule_id": "POL-FARAS-01",
+      "platform": "FARAS",
+      "clause": "Faras Driver Agreement Section 8",
+      "title": "Account Suspension and Fare Review Policy",
+      "summary": "Outlines dispute resolution procedures for trip fare recalculations and driver account holds."
+    },
+    {
+      "rule_id": "POL-YEGO-01",
+      "platform": "YEGO",
+      "clause": "Yego Partner Terms Section 10",
+      "title": "Service Standards and Quality Suspension",
+      "summary": "Defines operational guidelines and driver appeal rights for conduct and cancellation disputes."
+    },
+    {
+      "rule_id": "POL-LITTLE-01",
+      "platform": "LITTLE",
+      "clause": "Little Cab Driver Policy Section 6",
+      "title": "Financial Audit & Anti-Fraud Compliance",
+      "summary": "Establishes guidelines for cash fare audits, passenger M-Pesa receipts, and account verification."
+    }
+  ],
+  "union_protocols": [
+    {
+      "rule_id": "POL-TAWU-01",
+      "union": "TAWU",
+      "clause": "Grievance Protocol Clause 4",
+      "title": "Union Representation & Formal Appeals Procedure",
+      "summary": "Establishes Transport and Allied Workers Union advocacy rights and structured appeal presentation standard."
+    }
+  ]
+}
