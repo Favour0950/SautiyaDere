@@ -1,81 +1,328 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SautiYaDereCaseRecord",
+  "$id": "https://github.com/sauti-ya-dere/data/schema.json",
+  "title": "Sauti ya Dere case record",
+  "description": "One driver case, synthetic or real. Everything under `labels` is the right answer used for scoring; the system under test never sees it. Entity and PII spans are character offsets into `narrative` (start inclusive, end exclusive, Python slicing). validate.py also checks that narrative[start:end] == text.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
+    "schema_version",
     "case_id",
-    "created_at",
+    "source",
+    "split",
     "platform",
-    "category",
-    "driver_statement",
-    "extracted_entities",
-    "evidence_status",
-    "status"
+    "notice_text",
+    "narrative",
+    "evidence_held",
+    "style",
+    "language",
+    "labels"
   ],
   "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
     "case_id": {
       "type": "string",
-      "pattern": "^SYD-[0-9]{8}-[0-9]{4}$",
-      "description": "Unique case identifier (e.g., SYD-20261030-1001)"
+      "pattern": "^(SYN|REAL)-[0-9]{3,}$",
+      "description": "SYN-001 for synthetic, REAL-001 for real."
     },
-    "created_at": {
-      "type": "string",
-      "format": "date-time"
+    "source": {
+      "enum": [
+        "synthetic",
+        "real"
+      ]
+    },
+    "split": {
+      "enum": [
+        "build",
+        "held_out"
+      ],
+      "description": "Held-out cases are never used while building."
     },
     "platform": {
-      "type": "string",
-      "enum": ["UBER", "BOLT", "FARAS", "YEGO", "LITTLE_CAB", "OTHER"]
-    },
-    "category": {
-      "type": "string",
       "enum": [
-        "PAYMENT_EARNINGS_HOLD",
-        "FRAUD_ACCUSATION",
-        "SAFETY_INCIDENT",
-        "CONDUCT_COMPLAINT",
-        "ACCOUNT_INTEGRITY"
+        "Uber",
+        "Bolt",
+        "Little",
+        "Faras",
+        "other"
       ]
     },
-    "driver_statement": {
-      "type": "string",
-      "minLength": 10,
-      "description": "Raw or voice-transcribed narrative from the driver"
+    "notice_text": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 5000,
+      "description": "Wording of the suspension message as the driver saw it. null if the driver has none."
     },
-    "redacted_statement": {
+    "narrative": {
       "type": "string",
-      "description": "Narrative sanitized by Microsoft Presidio (PII removed)"
+      "minLength": 1,
+      "maxLength": 10000,
+      "description": "The driver's story in their own words. For real cases this is stored AFTER personal details are removed."
     },
-    "extracted_entities": {
-      "type": "object",
-      "properties": {
-        "TRIP_ID": { "type": "string", "nullable": true },
-        "MONEY": { "type": "array", "items": { "type": "string" } },
-        "LOCATION": { "type": "array", "items": { "type": "string" } },
-        "DATE_TIME": { "type": "array", "items": { "type": "string" } }
+    "evidence_held": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/evidence_id"
+      },
+      "description": "What the driver says they have."
+    },
+    "style": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "calm",
+          "upset",
+          "very_short",
+          "long"
+        ]
+      },
+      "description": "Used to check the set is varied."
+    },
+    "language": {
+      "enum": [
+        "english",
+        "swahili",
+        "mixed"
+      ],
+      "description": "mixed = Kenyan English with Swahili or Sheng words."
+    },
+    "consent": {
+      "$ref": "#/$defs/consent",
+      "description": "Real cases only: how and when the driver agreed to this use."
+    },
+    "labels": {
+      "$ref": "#/$defs/labels"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "real"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "consent"
+        ],
+        "properties": {
+          "case_id": {
+            "pattern": "^REAL-"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "consent"
+          ]
+        },
+        "properties": {
+          "case_id": {
+            "pattern": "^SYN-"
+          }
+        }
       }
+    }
+  ],
+  "$defs": {
+    "case_type": {
+      "enum": [
+        "passenger_safety",
+        "fare_dispute",
+        "rating_or_cancellation",
+        "fraud_flag",
+        "out_of_scope"
+      ]
     },
-    "evidence_status": {
+    "evidence_id": {
+      "description": "Checklist item IDs. Must match the item IDs in data/checklists.json (T07).",
+      "enum": [
+        "SUSPENSION_NOTICE",
+        "TRIP_RECEIPT",
+        "ROUTE_MAP",
+        "IN_APP_CHAT",
+        "MPESA_RECEIPT",
+        "DASHCAM_FOOTAGE",
+        "WITNESS_NAMES",
+        "POLICE_ABSTRACT",
+        "RATING_SCREENSHOT",
+        "CANCELLED_TRIPS_LIST",
+        "CANCEL_REQUEST_SCREENSHOT",
+        "TRIP_HISTORY",
+        "SOLE_USE_PROOF",
+        "DEVICE_GPS_DETAILS"
+      ]
+    },
+    "entity": {
+      "description": "Facts the appeal needs. Kept in the narrative.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
-        "provided_required",
-        "missing_required",
-        "provided_optional"
+        "text",
+        "label",
+        "start",
+        "end"
       ],
       "properties": {
-        "provided_required": { "type": "array", "items": { "type": "string" } },
-        "missing_required": { "type": "array", "items": { "type": "string" } },
-        "provided_optional": { "type": "array", "items": { "type": "string" } }
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "enum": [
+            "DATE",
+            "TIME",
+            "LOCATION",
+            "MONEY",
+            "TRIP_ID"
+          ]
+        }
       }
     },
-    "status": {
-      "type": "string",
-      "enum": [
-        "DRAFT",
-        "GAP_CHECK_PENDING",
-        "APPEAL_GENERATED",
-        "SUBMITTED_TAWU",
-        "RESOLVED"
-      ]
+    "pii": {
+      "description": "Personal details the filter must remove before text leaves the server. In synthetic cases these are invented; they exist so the filter can be scored.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "label",
+        "start",
+        "end"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "enum": [
+            "PERSON",
+            "PHONE",
+            "PLATE",
+            "MPESA_CODE",
+            "ID_NUMBER",
+            "EMAIL",
+            "ADDRESS"
+          ]
+        }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_type",
+        "entities",
+        "pii",
+        "evidence_missing",
+        "policy_rules"
+      ],
+      "properties": {
+        "case_type": {
+          "$ref": "#/$defs/case_type"
+        },
+        "secondary_case_type": {
+          "$ref": "#/$defs/case_type",
+          "description": "Labelling rule: if a story fits two types, case_type is the one the notice points to and the other goes here."
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entity"
+          }
+        },
+        "pii": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pii"
+          }
+        },
+        "evidence_missing": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidence_id"
+          },
+          "description": "Required checklist items for this case type that are not in evidence_held. The gap checker should flag exactly these."
+        },
+        "policy_rules": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]+$"
+          },
+          "description": "Rule IDs from data/policies.json (T08) that the appeal can cite."
+        }
+      }
+    },
+    "consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "date",
+        "form",
+        "scope"
+      ],
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "form": {
+          "enum": [
+            "written",
+            "verbal_recorded",
+            "in_app"
+          ]
+        },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "test_set",
+              "training",
+              "case_tracking"
+            ]
+          }
+        },
+        "expires": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date",
+          "description": "Delete the record on or before this date. null = end of project."
+        }
+      }
     }
   }
 }

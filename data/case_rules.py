@@ -1,53 +1,100 @@
 """
-Case rules and evidence checklist loader integrated with data alignment mappers.
+Case rules and checklist loader integrated with data alignment mappers.
 """
 
 import json
 from pathlib import Path
-from data.mappings import normalize_category, normalize_evidence_id, normalize_rule_id
+
+try:
+    from data.mappings import normalize_category, normalize_evidence_id, normalize_rule_id
+except ModuleNotFoundError:
+    from mappings import normalize_category, normalize_evidence_id, normalize_rule_id
 
 DATA_DIR = Path(__file__).parent
 
+# 4 in-scope keys matching TEMPLATES in generate.py
+IN_SCOPE_TYPES = [
+    "fare_dispute",
+    "fraud_flag",
+    "passenger_safety",
+    "rating_or_cancellation"
+]
+
 def load_checklists(file_path: Path = DATA_DIR / "checklists.json") -> dict:
-    """Loads evidence checklists, normalizing keys and item IDs to standard enums."""
     if not file_path.exists():
         return {}
-    
     with open(file_path, "r", encoding="utf-8") as f:
-        raw_checklists = json.load(f)
+        raw = json.load(f)
     
-    normalized_checklists = {}
-    for cat_key, sections in raw_checklists.items():
-        std_cat = normalize_category(cat_key)
+    checklists = {}
+    for cat_key, sections in raw.items():
         normalized_sections = {}
-        
         for section_key, items in sections.items():
             normalized_items = []
             for item in items:
-                if isinstance(item, dict):
-                    item_copy = item.copy()
-                    item_copy["item_id"] = normalize_evidence_id(item_copy.get("item_id", ""))
-                    normalized_items.append(item_copy)
-                else:
-                    normalized_items.append(normalize_evidence_id(str(item)))
+                # Extract string item_id if item is a dictionary to prevent unhashable dict errors
+                raw_id = item.get("item_id", "") if isinstance(item, dict) else str(item)
+                normalized_items.append(normalize_evidence_id(raw_id))
             normalized_sections[section_key] = normalized_items
-            
-        normalized_checklists[std_cat] = normalized_sections
         
-    return normalized_checklists
+        # Raw json key & Uppercase enum key
+        checklists[cat_key] = normalized_sections
+        std_cat = normalize_category(cat_key)
+        checklists[std_cat] = normalized_sections
+
+    # Explicit fallback aliases for template compatibility
+    alias_map = {
+        "fraud_flag": ["fraud_accusation", "FRAUD_ACCUSATION"],
+        "rating_or_cancellation": ["rating_cancellation", "CONDUCT_COMPLAINT"],
+        "fare_dispute": ["PAYMENT_EARNINGS_HOLD"],
+        "passenger_safety": ["SAFETY_INCIDENT"]
+    }
+    for target_key, sources in alias_map.items():
+        if target_key not in checklists:
+            for src in sources:
+                if src in checklists:
+                    checklists[target_key] = checklists[src]
+                    break
+
+    return checklists
 
 def load_policies(file_path: Path = DATA_DIR / "policies.json") -> dict:
-    """Loads policies, normalizing rule_id values."""
     if not file_path.exists():
         return {}
-        
     with open(file_path, "r", encoding="utf-8") as f:
         policies = json.load(f)
-        
     for category in ["statutory_rules", "platform_rules", "union_protocols"]:
         if category in policies:
             for rule in policies[category]:
                 if "rule_id" in rule:
                     rule["rule_id"] = normalize_rule_id(rule["rule_id"])
-                    
     return policies
+
+CHECKLISTS = load_checklists()
+POLICIES = load_policies()
+
+def policy_rules(case_type: str = None, platform: str = None) -> dict:
+    """Callable wrapper returning policy rules for generator compatibility."""
+    return POLICIES
+
+def missing_evidence(case_type: str, present_evidence: list, checklists: dict = None) -> list:
+    source_checklists = checklists if checklists is not None else CHECKLISTS
+    cat = normalize_category(case_type)
+    reqs = (
+        source_checklists.get(case_type, {}).get("required") or
+        source_checklists.get(cat, {}).get("required", [])
+    )
+    
+    # Extract string IDs if present_evidence contains dictionaries or raw strings
+    present_set = set()
+    for e in present_evidence:
+        raw_id = e.get("item_id", "") if isinstance(e, dict) else str(e)
+        present_set.add(normalize_evidence_id(raw_id))
+
+    missing = []
+    for r in reqs:
+        item_id = r.get("item_id", "") if isinstance(r, dict) else str(r)
+        norm_item_id = normalize_evidence_id(item_id)
+        if norm_item_id and norm_item_id not in present_set:
+            missing.append(r)
+    return missing
