@@ -12,7 +12,6 @@ except ModuleNotFoundError:
 
 DATA_DIR = Path(__file__).parent
 
-# 4 in-scope keys matching TEMPLATES in generate.py
 IN_SCOPE_TYPES = [
     "fare_dispute",
     "fraud_flag",
@@ -40,7 +39,6 @@ def load_checklists(file_path: Path = DATA_DIR / "checklists.json") -> dict:
         std_cat = normalize_category(cat_key)
         checklists[std_cat] = normalized_sections
 
-    # Alias fallbacks for template compatibility
     alias_map = {
         "fraud_flag": ["fraud_accusation", "FRAUD_ACCUSATION"],
         "rating_or_cancellation": ["rating_cancellation", "CONDUCT_COMPLAINT"],
@@ -81,18 +79,16 @@ def policy_rules(case_type: str = None, platform: str = None) -> list:
         
     rule_ids = []
     
-    # Add statutory and union rules
     for cat in ["statutory_rules", "union_protocols"]:
         for r in POLICIES.get(cat, []):
             if isinstance(r, dict) and "rule_id" in r:
                 rule_ids.append(r["rule_id"])
                 
-    # Add platform-specific rules
     plat_str = str(platform).lower() if platform else ""
     for r in POLICIES.get("platform_rules", []):
         if isinstance(r, dict) and "rule_id" in r:
-            rid = r["rule_id"].upper()
-            if not plat_str or any(p in rid for p in [plat_str, "GENERAL", "ALL"]):
+            rid = r["rule_id"].lower()
+            if not plat_str or any(p in rid for p in [plat_str, "general", "all"]):
                 rule_ids.append(r["rule_id"])
 
     return list(dict.fromkeys(rule_ids))
