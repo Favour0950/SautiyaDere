@@ -69,6 +69,27 @@
       "clause": "Uber Community Guidelines & Deactivation Policy",
       "title": "Fraud Detection and Account Deactivation Review",
       "summary": "Specifies investigation protocols for flagged GPS anomalies, account sharing suspicions, or promotional abuse."
+    },
+    {
+      "rule_id": "POL-FARAS-01",
+      "platform": "FARAS",
+      "clause": "Faras Driver Agreement Section 8",
+      "title": "Account Suspension and Fare Review Policy",
+      "summary": "Outlines dispute resolution procedures for trip fare recalculations and driver account holds."
+    },
+    {
+      "rule_id": "POL-YEGO-01",
+      "platform": "YEGO",
+      "clause": "Yego Partner Terms Section 10",
+      "title": "Service Standards and Quality Suspension",
+      "summary": "Defines operational guidelines and driver appeal rights for conduct and cancellation disputes."
+    },
+    {
+      "rule_id": "POL-LITTLE-01",
+      "platform": "LITTLE",
+      "clause": "Little Cab Driver Policy Section 6",
+      "title": "Financial Audit & Anti-Fraud Compliance",
+      "summary": "Establishes guidelines for cash fare audits, passenger M-Pesa receipts, and account verification."
     }
   ],
   "union_protocols": [

@@ -1,66 +1,53 @@
-"""Case types, evidence checklists and policy rule IDs shared by generate.py and validate.py.
-
-DRAFT. Taken from the Data Plan starting lists. Mercy finalises the checklists in
-data/checklists.json (T07) and the rule IDs in data/policies.json (T08). When those
-files exist, load_checklists() / policy IDs should be read from them instead.
+"""
+Case rules and evidence checklist loader integrated with data alignment mappers.
 """
 
 import json
 from pathlib import Path
+from data.mappings import normalize_category, normalize_evidence_id, normalize_rule_id
 
-DATA_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(__file__).parent
 
-IN_SCOPE_TYPES = ["passenger_safety", "fare_dispute", "rating_or_cancellation", "fraud_flag"]
-CASE_TYPES = IN_SCOPE_TYPES + ["out_of_scope"]
+def load_checklists(file_path: Path = DATA_DIR / "checklists.json") -> dict:
+    """Loads evidence checklists, normalizing keys and item IDs to standard enums."""
+    if not file_path.exists():
+        return {}
+    
+    with open(file_path, "r", encoding="utf-8") as f:
+        raw_checklists = json.load(f)
+    
+    normalized_checklists = {}
+    for cat_key, sections in raw_checklists.items():
+        std_cat = normalize_category(cat_key)
+        normalized_sections = {}
+        
+        for section_key, items in sections.items():
+            normalized_items = []
+            for item in items:
+                if isinstance(item, dict):
+                    item_copy = item.copy()
+                    item_copy["item_id"] = normalize_evidence_id(item_copy.get("item_id", ""))
+                    normalized_items.append(item_copy)
+                else:
+                    normalized_items.append(normalize_evidence_id(str(item)))
+            normalized_sections[section_key] = normalized_items
+            
+        normalized_checklists[std_cat] = normalized_sections
+        
+    return normalized_checklists
 
-# Required items drive `evidence_missing`; optional items may appear in `evidence_held`
-# but are never flagged as missing.
-CHECKLISTS: dict[str, dict[str, list[str]]] = {
-    "passenger_safety": {
-        "required": ["SUSPENSION_NOTICE", "TRIP_RECEIPT", "ROUTE_MAP", "IN_APP_CHAT"],
-        "optional": ["DASHCAM_FOOTAGE", "WITNESS_NAMES", "POLICE_ABSTRACT"],
-    },
-    "fare_dispute": {
-        "required": ["SUSPENSION_NOTICE", "TRIP_RECEIPT", "MPESA_RECEIPT", "IN_APP_CHAT", "ROUTE_MAP"],
-        "optional": [],
-    },
-    "rating_or_cancellation": {
-        "required": ["SUSPENSION_NOTICE", "RATING_SCREENSHOT", "CANCELLED_TRIPS_LIST"],
-        "optional": ["CANCEL_REQUEST_SCREENSHOT", "IN_APP_CHAT"],
-    },
-    "fraud_flag": {
-        "required": ["SUSPENSION_NOTICE", "TRIP_HISTORY", "SOLE_USE_PROOF", "MPESA_RECEIPT"],
-        "optional": ["DEVICE_GPS_DETAILS"],
-    },
-    "out_of_scope": {"required": [], "optional": []},
-}
-
-# Rule IDs. Must match data/policies.json once T08 is done.
-RULES_ALL = ["LN120_REG15_1", "LN120_REG13_1_B", "DPA_S26_S35"]
-RULES_BY_TYPE = {"passenger_safety": ["LN120_REG18_1"]}
-RULES_BY_PLATFORM = {
-    "Uber": ["UBER_KE_DEACTIVATION_REVIEW"],
-    "Bolt": ["BOLT_KE_CL12", "BOLT_KE_CL13", "BOLT_KE_CL16_8"],
-    "Faras": ["FARAS_PROVIDER_TERMS"],
-}
-
-
-def load_checklists() -> dict[str, dict[str, list[str]]]:
-    """Use data/checklists.json if Mercy's file exists and has our shape, else the draft."""
-    path = DATA_DIR / "checklists.json"
-    if path.exists():
-        data = json.loads(path.read_text())
-        if all(t in data and "required" in data[t] for t in IN_SCOPE_TYPES):
-            return data
-    return CHECKLISTS
-
-
-def missing_evidence(case_type: str, held: list[str], checklists=None) -> list[str]:
-    checklists = checklists or load_checklists()
-    return [item for item in checklists[case_type]["required"] if item not in held]
-
-
-def policy_rules(case_type: str, platform: str) -> list[str]:
-    if case_type == "out_of_scope":
-        return []
-    return RULES_ALL + RULES_BY_TYPE.get(case_type, []) + RULES_BY_PLATFORM.get(platform, [])
+def load_policies(file_path: Path = DATA_DIR / "policies.json") -> dict:
+    """Loads policies, normalizing rule_id values."""
+    if not file_path.exists():
+        return {}
+        
+    with open(file_path, "r", encoding="utf-8") as f:
+        policies = json.load(f)
+        
+    for category in ["statutory_rules", "platform_rules", "union_protocols"]:
+        if category in policies:
+            for rule in policies[category]:
+                if "rule_id" in rule:
+                    rule["rule_id"] = normalize_rule_id(rule["rule_id"])
+                    
+    return policies
