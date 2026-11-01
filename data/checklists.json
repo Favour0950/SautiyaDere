@@ -1,0 +1,137 @@
+{
+  "PAYMENT_EARNINGS_HOLD": {
+    "required": [
+      {
+        "item_id": "TRIP_RECEIPT_SCREENSHOT",
+        "label": "Trip ID & In-App Receipt Screenshot",
+        "source": "NTSA LN 120 Reg 12(4) & Platform Terms (Uber/Bolt/Faras/Yego/Little)"
+      },
+      {
+        "item_id": "MPESA_STATEMENT",
+        "label": "M-Pesa Statement / Cash Payment Confirmation",
+        "source": "TAWU Financial Dispute Checklist & Platform Earnings Policy"
+      }
+    ],
+    "optional": [
+      {
+        "item_id": "GPS_ROUTE_LOG",
+        "label": "GPS Route & Google Maps Timeline Log",
+        "source": "TAWU Appeal Best Practice & Platform Distance Dispute Terms"
+      },
+      {
+        "item_id": "IN_APP_CHAT_SCREENSHOT",
+        "label": "In-App Chat / Customer Call Screenshot",
+        "source": "TAWU Grievance Protocol (Fare Agreement)"
+      }
+    ]
+  },
+  "FRAUD_ACCUSATION": {
+    "required": [
+      {
+        "item_id": "DEACTIVATION_NOTICE",
+        "label": "Deactivation Notice / App Fraud Warning Screen",
+        "source": "NTSA LN 120 Reg 15(1) & Uber/Bolt/Little Fraud Policies"
+      },
+      {
+        "item_id": "CHRONOLOGICAL_TRIP_LOG",
+        "label": "Chronological Trip Log & Explanation",
+        "source": "TAWU Legal Guidance on Algorithmic Locks"
+      }
+    ],
+    "optional": [
+      {
+        "item_id": "LOCATION_HISTORY_EXPORT",
+        "label": "Google Maps Location History Export",
+        "source": "TAWU Anti-Algorithmic Bias Protocol"
+      },
+      {
+        "item_id": "PASSENGER_MPESA_RECEIPT",
+        "label": "Passenger M-Pesa Receipt for Cash Trip",
+        "source": "Little Cab / Faras Financial Audit Terms"
+      }
+    ]
+  },
+  "SAFETY_INCIDENT": {
+    "required": [
+      {
+        "item_id": "INCIDENT_TIMESTAMP_LOG",
+        "label": "Incident Details & Exact Timestamp Log",
+        "source": "NTSA LN 120 Reg 11(e) & Reg 18(2)"
+      },
+      {
+        "item_id": "POLICE_ABSTRACT",
+        "label": "Official Police Abstract (if crash, injury, or assault occurred)",
+        "source": "NTSA LN 120 Reg 11(b) & TAWU Safety Protocol"
+      }
+    ],
+    "optional": [
+      {
+        "item_id": "DASHCAM_FOOTAGE",
+        "label": "Dashcam Footage (Audio/Video Log)",
+        "source": "NTSA LN 120 Reg 18(1) & Platform Safety Guidelines"
+      },
+      {
+        "item_id": "WITNESS_STATEMENT",
+        "label": "Third-Party / Security Guard / Witness Statement",
+        "source": "TAWU Incident Defense Protocol"
+      }
+    ]
+  },
+  "CONDUCT_COMPLAINT": {
+    "required": [
+      {
+        "item_id": "IN_APP_CHAT_SCREENSHOT",
+        "label": "In-App Conversation / Call Activity Screenshot",
+        "source": "Platform Community Guidelines & TAWU Note"
+      },
+      {
+        "item_id": "DRIVER_COUNTER_STATEMENT",
+        "label": "Written Driver Counter-Statement",
+        "source": "NTSA LN 120 Reg 15 Due Process Mandate"
+      }
+    ],
+    "optional": [
+      {
+        "item_id": "DASHCAM_FOOTAGE",
+        "label": "Dashcam Clip showing interaction",
+        "source": "TAWU Appeals Standard"
+      },
+      {
+        "item_id": "DRIVER_RATING_HISTORY",
+        "label": "Historical Driver Star Rating & Compliment History",
+        "source": "Uber / Bolt / Yego Quality Review Terms"
+      }
+    ]
+  },
+  "ACCOUNT_INTEGRITY": {
+    "required": [
+      {
+        "item_id": "NATIONAL_ID_DRIVER_LICENSE",
+        "label": "Valid Kenyan National ID & Driver License",
+        "source": "NTSA LN 120 Reg 21(a)"
+      },
+      {
+        "item_id": "PSV_BADGE_POLICE_CLEARANCE",
+        "label": "Valid PSV Badge & Police Clearance Certificate (Good Conduct)",
+        "source": "NTSA LN 120 Reg 21(b) & Little/Faras Onboarding Standards"
+      },
+      {
+        "item_id": "VEHICLE_INSPECTION_INSURANCE",
+        "label": "Valid Vehicle Inspection Certificate & PSV Insurance Cover",
+        "source": "NTSA LN 120 Reg 15(1)(a-b)"
+      }
+    ],
+    "optional": [
+      {
+        "item_id": "SELFIE_PHOTO",
+        "label": "Real-Time Clear Selfie Photo",
+        "source": "Uber Real-Time ID / Bolt Selfie Verification Standard"
+      },
+      {
+        "item_id": "VEHICLE_PHOTOS",
+        "label": "Vehicle Photos (Front, Back, Dashboard, Interior)",
+        "source": "NTSA Reg 15 Maintenance & Platform Onboarding Checklist"
+      }
+    ]
+  }
+}
