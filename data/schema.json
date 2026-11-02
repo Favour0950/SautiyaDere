@@ -147,20 +147,37 @@
     "evidence_id": {
       "description": "Checklist item IDs. Must match the item IDs in data/checklists.json (T07).",
       "enum": [
-        "SUSPENSION_NOTICE",
-        "TRIP_RECEIPT",
-        "ROUTE_MAP",
-        "IN_APP_CHAT",
-        "MPESA_RECEIPT",
-        "DASHCAM_FOOTAGE",
-        "WITNESS_NAMES",
-        "POLICE_ABSTRACT",
-        "RATING_SCREENSHOT",
         "CANCELLED_TRIPS_LIST",
         "CANCEL_REQUEST_SCREENSHOT",
-        "TRIP_HISTORY",
+        "CHRONOLOGICAL_TRIP_LOG",
+        "DASHCAM_FOOTAGE",
+        "DEACTIVATION_NOTICE",
+        "DEVICE_GPS_DETAILS",
+        "DRIVER_COUNTER_STATEMENT",
+        "DRIVER_RATING_HISTORY",
+        "GPS_ROUTE_LOG",
+        "INCIDENT_TIMESTAMP_LOG",
+        "IN_APP_CHAT",
+        "IN_APP_CHAT_SCREENSHOT",
+        "LOCATION_HISTORY_EXPORT",
+        "MPESA_RECEIPT",
+        "MPESA_STATEMENT",
+        "NATIONAL_ID_DRIVER_LICENSE",
+        "PASSENGER_MPESA_RECEIPT",
+        "POLICE_ABSTRACT",
+        "PSV_BADGE_POLICE_CLEARANCE",
+        "RATING_SCREENSHOT",
+        "ROUTE_MAP",
+        "SELFIE_PHOTO",
         "SOLE_USE_PROOF",
-        "DEVICE_GPS_DETAILS"
+        "SUSPENSION_NOTICE",
+        "TRIP_HISTORY",
+        "TRIP_RECEIPT",
+        "TRIP_RECEIPT_SCREENSHOT",
+        "VEHICLE_INSPECTION_INSURANCE",
+        "VEHICLE_PHOTOS",
+        "WITNESS_NAMES",
+        "WITNESS_STATEMENT"
       ]
     },
     "entity": {
@@ -276,7 +293,7 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "pattern": "^[A-Z0-9_]+$"
+            "pattern": "^[A-Z0-9_-]+$"
           },
           "description": "Rule IDs from data/policies.json (T08) that the appeal can cite."
         }
