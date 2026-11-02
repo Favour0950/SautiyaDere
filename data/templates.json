@@ -1,0 +1,18 @@
+{
+  "fare_dispute": {
+    "headline": "Formal Appeal: Contested Fare Discrepancy and Account Restatement",
+    "body_template": "Dear {platform} Support Team,\n\nI am writing to formally contest the fare adjustment or suspension placed on my driver account regarding the trip completed on {date} at approximately {time} along the route {location}. The recorded fare does not accurately reflect the actual journey completed, M-Pesa records, or trip duration.\n\nI request an immediate administrative review of the attached trip telemetry and payment receipts to adjust the fare and restore full account access."
+  },
+  "passenger_safety": {
+    "headline": "Formal Appeal: Response to Safety Incident Allegation",
+    "body_template": "Dear {platform} Support Team,\n\nI am submitting this formal response regarding the safety incident report logged on {date} at {time} near {location}. I maintain a clean safety record and deny any misconduct during this trip.\n\nAttached please find supporting dashcam footage, support chat logs, and relevant official documentation verifying the events as they occurred."
+  },
+  "rating_or_cancellation": {
+    "headline": "Formal Appeal: Review of Unfair Rating and Cancellation Flag",
+    "body_template": "Dear {platform} Support Team,\n\nI am requesting a review of the recent account flag/suspension resulting from a disputed rating or cancellation on {date} at {time} in {location}.\n\nThe trip status and passenger communications demonstrate that standard protocol was followed. Attached evidence confirms my rating history and trip context."
+  },
+  "fraud_flag": {
+    "headline": "Formal Appeal: Clarification on Algorithmic Fraud Accusation",
+    "body_template": "Dear {platform} Support Team,\n\nI am writing to appeal the automated fraud flag applied to my account on {date} regarding activity near {location}.\n\nMy location history logs and M-Pesa transaction records confirm legitimate account activity without platform rule violations. I request human review and immediate account reactivation."
+  }
+}
