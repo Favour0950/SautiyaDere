@@ -1,4 +1,11 @@
-from scripts.score_pipeline import Score, move, placeholder_redact, score_case, score_cases
+from scripts.score_pipeline import (
+    Score,
+    filter_redact,
+    move,
+    placeholder_redact,
+    score_case,
+    score_cases,
+)
 
 
 def test_placeholders_replace_personal_details_and_keep_fact_offsets():
@@ -36,18 +43,47 @@ def test_overlap_counts_as_found_and_wrong_label_does_not():
     assert score.misses["LOCATION"] == {"CBD": 1}
 
 
+CASE = {
+    "narrative": "Sunday 11th at Westlands, rider Wanjiku, plate KDC 638T, paid KSh 500.",
+    "labels": {
+        "entities": [
+            {"label": "DATE", "start": 0, "end": 11},
+            {"label": "LOCATION", "start": 15, "end": 24},
+            {"label": "MONEY", "start": 62, "end": 69},
+        ],
+        "pii": [
+            {"label": "PERSON", "start": 32, "end": 39},
+            {"label": "PLATE", "start": 47, "end": 55},
+        ],
+    },
+}
+
+
+def test_filter_redact_offsets_match_the_real_filter():
+    narrative = CASE["narrative"]
+    detected = [("PERSON", 32, 39), ("PLATE", 47, 55)]
+    text, shifts = filter_redact(narrative, detected)
+    start = narrative.index("KSh 500")
+    assert text[move(start, shifts):move(start + 7, shifts)] == "KSh 500"
+
+
 def test_scores_a_labelled_case_end_to_end():
-    narrative = "Sunday 11th at Westlands, plate KDC 638T."
+    for redaction in ("filter", "labels"):
+        filtered, kept, extraction = score_cases([CASE], redaction)
+        assert extraction.found == extraction.labelled == {"DATE": 1, "LOCATION": 1, "MONEY": 1}
+        assert not any(extraction.extras.values())
+        assert kept.kept == kept.total == 3
+    filtered, _, _ = score_cases([CASE], "filter")
+    assert filtered.found == filtered.labelled == {"PERSON": 1, "PLATE": 1}
+
+
+def test_a_fact_hidden_by_the_filter_counts_as_lost():
     case = {
-        "narrative": narrative,
-        "labels": {
-            "entities": [
-                {"label": "DATE", "start": 0, "end": 11},
-                {"label": "LOCATION", "start": 15, "end": 24},
-            ],
-            "pii": [{"label": "PLATE", "start": 32, "end": 40}],
-        },
+        "narrative": "Met him at Westlands.",
+        "labels": {"entities": [{"label": "LOCATION", "start": 11, "end": 20}], "pii": []},
     }
-    score = score_cases([case])
-    assert score.found == score.labelled == {"DATE": 1, "LOCATION": 1}
-    assert not any(score.extras.values())
+    # Pretend the labels marked the place as a personal detail.
+    case["labels"]["pii"] = [{"label": "PERSON", "start": 11, "end": 20}]
+    _, kept, extraction = score_cases([case], "labels")
+    assert kept.kept == 0 and kept.total == 1
+    assert extraction.found == {} and extraction.labelled == {"LOCATION": 1}

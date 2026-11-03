@@ -56,6 +56,7 @@ def test_worked_examples(text, expected):
 
 @pytest.mark.parametrize("amount", [
     "KSh 2,300", "Ksh2850", "KES 950", "bob 200", "200bob", "1700/-", "Ksh.500", "Kshs 1,200",
+    "2k", "1.5k",
 ])
 def test_money_with_currency(amount):
     assert labelled(f"The fare was shown as {amount} on the app.", "MONEY") == [amount]
@@ -68,6 +69,7 @@ def test_money_with_currency(amount):
     ("the guy gave me 250 and ran", "250"),
     ("wateja walilipa 750 kwa M-Pesa", "750"),
     ("App ilionyesha 1000 lakini mteja", "1000"),
+    ("nililipwa 500 badala ya 2,500", "2,500"),
 ])
 def test_plain_amount_after_a_payment_word(text, amount):
     assert amount in labelled(text, "MONEY")
@@ -87,7 +89,7 @@ def test_plain_numbers_without_a_payment_word_are_not_money(text):
 
 @pytest.mark.parametrize("date", [
     "Friday 9 October", "3rd Oct", "last Thursday", "yesterday", "last week",
-    "jana", "juzi", "Jumamosi", "7/10/2026",
+    "jana", "juzi", "Jumamosi", "7/10/2026", "tarehe 4", "tarehe 4 Oktoba",
 ])
 def test_dates(date):
     assert date in labelled(f"It happened {date} near the stage.", "DATE")

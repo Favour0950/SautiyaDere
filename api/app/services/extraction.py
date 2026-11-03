@@ -49,6 +49,9 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
     "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+    # Swahili
+    "januari", "februari", "machi", "aprili", "mei", "juni", "julai", "agosti",
+    "septemba", "oktoba", "novemba", "desemba",
 ]
 PART_OF_DAY = ["morning", "afternoon", "evening", "night"]
 # Swahili times: "saa nne asubuhi" (10am), "saa tatu usiku" (9pm).
@@ -69,8 +72,8 @@ MONEY_CUES = [
 # Only these cues are strong enough on their own. Weak cues ("of", "was",
 # "is", "only") need a strong cue just before them, e.g. "fare was 1050",
 # "instead of 2700".
-WEAK_MONEY_CUES = {"of", "was", "is", "only"}
-WEAK_CUE_LEADS = {"fare", "instead", "paid", "cost", "nauli", "balance", "price", "total"}
+WEAK_MONEY_CUES = {"of", "was", "is", "only", "ya"}  # "badala ya 2,500" = instead of
+WEAK_CUE_LEADS = {"fare", "instead", "paid", "cost", "nauli", "balance", "price", "total", "badala"}
 
 NUMBER_REGEX = r"^\d{1,3}(,\d{3})+$|^\d{2,6}$"
 
@@ -95,7 +98,7 @@ def _place_patterns(nlp: Language) -> list[dict]:
 def _money_patterns() -> list[dict]:
     number = {"LIKE_NUM": True}
     joined = r"^(kshs?|kes|shs?)\.?\d[\d,]*(\.\d+)?(/[-=])?$"  # Ksh2850, sh500
-    joined_after = r"^\d[\d,]*(\.\d+)?(bob|/-|/=)$"  # 200bob, 1700/-
+    joined_after = r"^\d[\d,]*(\.\d+)?(bob|k|/-|/=)$"  # 200bob, 2k, 1.5k, 1700/-
     return [
         {"label": "MONEY", "pattern": [{"LOWER": {"IN": CURRENCY_WORDS}}, number]},
         {"label": "MONEY", "pattern": [{"LOWER": {"IN": CURRENCY_WORDS}}, {"ORTH": "."}, number]},
@@ -129,6 +132,9 @@ def _date_patterns() -> list[dict]:
         [day, month],
         [day, month, year],
         [day, {"LOWER": "of"}, month],
+        # Swahili: "tarehe 4" (the 4th), "tarehe 4 Oktoba"
+        [{"LOWER": "tarehe"}, day],
+        [{"LOWER": "tarehe"}, day, month],
         [month, day],
         [month, day, {"ORTH": ","}, year],
         [{"TEXT": {"REGEX": r"^\d{1,2}[/-]\d{1,2}[/-](\d{2}|\d{4})$"}}],

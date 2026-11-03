@@ -22,7 +22,12 @@ def test_phone_numbers(phone):
     assert hidden(f"Her number is {phone} if you need to call.") == [("PHONE", phone)]
 
 
-@pytest.mark.parametrize("plate", ["KDC 638T", "KDF516R", "kdc 638t", "KMDA 123B"])
+@pytest.mark.parametrize("phone", ["O712 345 678", "0712 34 56 78", "07 12 345 678"])
+def test_phone_numbers_with_typos_or_odd_spacing(phone):
+    assert hidden(f"nipigie {phone} kesho") == [("PHONE", phone)]
+
+
+@pytest.mark.parametrize("plate",["KDC 638T", "KDF516R", "kdc 638t", "KMDA 123B"])
 def test_number_plates(plate):
     assert hidden(f"Gari yangu ni {plate} kwa stage.") == [("PLATE", plate)]
 
@@ -51,6 +56,19 @@ def test_names_from_the_list(text, name):
 ])
 def test_ambiguous_names_next_to_a_context_word(text, name):
     assert hidden(text) == [("PERSON", name)]
+
+
+@pytest.mark.parametrize("text,name", [
+    ("mteja anaitwa Mwanaidi alinitukana", "Mwanaidi"),
+    ("jina lake ni akello", "akello"),
+    ("his name is Tsuma", "Tsuma"),
+])
+def test_names_not_on_the_list_after_a_naming_phrase(text, name):
+    assert hidden(text) == [("PERSON", name)]
+
+
+def test_naming_phrase_before_a_place_keeps_the_place():
+    assert hidden("the stage named Kencom was busy") == []
 
 
 def test_email():

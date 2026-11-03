@@ -15,7 +15,8 @@ What it finds (Presidio, with our own recognizers):
 - PLATE:      KDC 638T, and motorbikes like KMDA 123B
 - MPESA_CODE: 10 capital letters and digits, at least 2 of each
 - PERSON:     names from data/kenyan_names.json, in any case. Names that are
-              also everyday words (Mercy, Baraka) only next to a context word
+              also everyday words (Mercy, Baraka) only next to a context word.
+              Also any word right after "anaitwa", "jina lake ni", "name is"
 - EMAIL:      Presidio's built-in recognizer, set up not to use the network
 
 Presidio's own date, place and nationality detectors are off: the appeal
@@ -47,7 +48,16 @@ LANGUAGE = "en"
 # below it and only pass when a context word raises their score.
 SCORE_THRESHOLD = 0.5
 
-PHONE_REGEX = r"(?<![\w+])(?:\+254|254|0)[\s-]?[17]\d{2}[\s-]?\d{3}[\s-]?\d{3}(?!\d)"
+# 07.. / 01.. / +2547.. / +2541..: nine digits after the 0, spaced or dashed
+# anywhere. A capital O typed for a zero ("O712 345 678") still counts.
+PHONE_REGEX = r"(?<![\w+])(?:\+?254|[0O])[\s-]?[17](?:[\s-]?[\dO]){8}(?!\w)"
+# Any word after an explicit naming phrase is a name, even if it is not on
+# the list: "anaitwa Mwanaidi", "jina lake ni Mwanaidi", "his name is Mwanaidi".
+# Python needs fixed-width lookbehinds, so each phrase gets its own.
+NAMING_PHRASES = ["anaitwa", "aitwaye", "jina lake ni", "jina ni", "name is", "named"]
+NAMED_REGEX = (
+    "(?:" + "|".join(f"(?<=\\b{p} )" for p in NAMING_PHRASES) + r")[A-Za-z][A-Za-z'-]+\b"
+)
 PLATE_REGEXES = {
     "car": r"\bK[A-Z]{2}\s?\d{3}[A-Z]\b",
     "motorbike": r"\bKM[A-Z]{2}\s?\d{3}[A-Z]\b",
@@ -130,6 +140,11 @@ def _recognizers() -> list:
             context=names["context_words"],
             global_regex_flags=case_sensitive,  # "Mercy" may be a name, "mercy" is not
         ),
+        PatternRecognizer(
+            supported_entity="PERSON",
+            name="NamedPersonRecognizer",
+            patterns=[Pattern("after_naming_phrase", NAMED_REGEX, 0.6)],
+        ),
         OfflineEmailRecognizer(),
     ]
 
@@ -163,13 +178,23 @@ def _analyzer() -> AnalyzerEngine:
 _LABELS = {"EMAIL_ADDRESS": "EMAIL"}
 
 
+@lru_cache(maxsize=1)
+def _place_names() -> frozenset[str]:
+    places = load_json("nairobi_locations.json")["places"]
+    return frozenset(n.lower() for p in places for n in [p["name"], *p.get("aliases", [])])
+
+
 def find_personal_details(text: str) -> list[tuple[str, int, int]]:
     """Return personal details as (label, start, end), in order, without overlaps.
 
     When two detections overlap the longer wins, then the higher score: an
-    email address beats the name inside it.
+    email address beats the name inside it. A "name" that is a Nairobi place
+    is dropped: the appeal needs places.
     """
-    results = _analyzer().analyze(text=text, language=LANGUAGE)
+    results = [
+        r for r in _analyzer().analyze(text=text, language=LANGUAGE)
+        if not (r.entity_type == "PERSON" and text[r.start:r.end].lower() in _place_names())
+    ]
     ranked = sorted(results, key=lambda r: (-(r.end - r.start), -r.score, r.start))
     chosen: list = []
     for r in ranked:
