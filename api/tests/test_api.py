@@ -34,6 +34,29 @@ def test_analyze_stub_accepts_valid_body():
     assert data["appeal"]["policy_rules"] == []
 
 
+def test_api_analyze_prefix_and_field_aliases():
+    res = client.post(
+        "/api/analyze",
+        json={
+            "platform": "Bolt",
+            "selected_notice_type": "Safety Violation",
+            "narrative": "Picked up client around 9:30 PM Tuesday at Westlands.",
+            "attached_evidence_keys": ["trip_receipt_screenshot.png"],
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["stub"] is True
+    assert set(data) == {
+        "stub",
+        "redacted_narrative",
+        "classification",
+        "entities",
+        "evidence",
+        "appeal",
+    }
+
+
 def test_analyze_response_has_all_sections():
     data = client.post("/analyze", json={"narrative": "x"}).json()
     assert set(data) == {

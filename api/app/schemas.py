@@ -6,7 +6,7 @@ The response layout follows Violet's proposal in docs/api.md.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 Platform = Literal["Uber", "Bolt", "Little", "Faras", "other"]
 CaseType = Literal[
@@ -20,10 +20,19 @@ EntityLabel = Literal["DATE", "TIME", "LOCATION", "MONEY", "TRIP_ID"]
 
 
 class AnalyzeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     narrative: str = Field(min_length=1, max_length=10_000)
-    notice_text: str | None = Field(default=None, max_length=5_000)
+    notice_text: str | None = Field(
+        default=None,
+        max_length=5_000,
+        validation_alias=AliasChoices("notice_text", "selected_notice_type"),
+    )
     platform: Platform | None = None
-    evidence_held: list[str] = Field(default_factory=list)
+    evidence_held: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("evidence_held", "attached_evidence_keys"),
+    )
 
 
 class Classification(BaseModel):
