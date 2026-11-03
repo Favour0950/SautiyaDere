@@ -619,6 +619,12 @@ function Verify({
           <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-400">
             Extracted facts · click pencil to edit
           </p>
+          {analysis.entities.length === 0 && (
+            <p className="text-sm text-slate-500">
+              No dates, places or amounts found in your story yet. Go back and add when and where the
+              trip happened, and the fare.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {analysis.entities.map((item, idx) => (
               <div key={idx} className="flex items-center">
@@ -1068,21 +1074,13 @@ export default function Page() {
       confidence: 0.89,
       needs_confirmation: false
     },
-    entities: [
-      { label: 'DATE', text: '14 May' },
-      { label: 'TIME', text: '4:30 PM' },
-      { label: 'LOCATION', text: 'Westlands to JKIA' },
-      { label: 'MONEY', text: 'KSh 1,250' }
-    ],
+    // Facts and missing evidence start empty and only ever come from the API.
+    // Sample values here would reach the driver's appeal as if they were theirs.
+    entities: [],
     evidence: {
-      readiness: 0.60,
-      missing: [
-        {
-          id: 'MPESA_STATEMENT',
-          reason: 'Required by Bolt to verify payment claims and reversal status.'
-        }
-      ],
-      optional: ['GPS_ROUTE_LOG', 'IN_APP_CHAT_SCREENSHOT']
+      readiness: 0,
+      missing: [],
+      optional: []
     },
     appeal: {
       headline: 'Formal Appeal: Contested Fare Dispute on 14 May',
@@ -1180,12 +1178,11 @@ export default function Page() {
             confidence: resData.classification?.confidence ?? prev.classification.confidence,
             needs_confirmation: resData.classification?.needs_confirmation ?? prev.classification.needs_confirmation
           },
-          entities: (resData.entities && resData.entities.length > 0) ? resData.entities : prev.entities,
+          // An empty list from the API means "none found": show it as empty.
+          entities: Array.isArray(resData.entities) ? resData.entities : [],
           evidence: {
             readiness: resData.evidence?.readiness ?? prev.evidence.readiness,
-            missing: (resData.evidence?.missing && resData.evidence.missing.length > 0)
-              ? resData.evidence.missing
-              : prev.evidence.missing,
+            missing: Array.isArray(resData.evidence?.missing) ? resData.evidence.missing : [],
             optional: resData.evidence?.optional ?? prev.evidence.optional
           },
           appeal: {
