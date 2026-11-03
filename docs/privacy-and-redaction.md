@@ -98,11 +98,42 @@ We need something that finds Kenyan names in mixed English, Swahili and Sheng, r
   - Entities the appeal needs (dates, places, amounts): kept at least 98% of the time.
   - Memory: the backend stays under 1.5 GiB, measured on Cloud Run.
 
-### Still to confirm before T15
+### What T15 built (4 Nov 2026)
 
-- `gliner` and `onnxruntime` (or `torch`) wheels exist for Python 3.14.
-- spaCy works on 3.14.
-- Actual memory use and response time on Cloud Run with 2 GiB.
+Code: `api/app/services/redaction.py`. Tests: `api/tests/test_redaction.py`. It follows the plan above with these differences:
+
+| Plan above | What was built | Why |
+|---|---|---|
+| GLiNER model for names | Names list (`data/kenyan_names.json`, about 300 names) plus any word after "anaitwa", "jina lake ni", "name is", "named" | Avoids a ~1 GB model for now. GLiNER is the next step if the real test set (T17) shows too many missed names |
+| Allow-list of places | Any detected name that is in `data/nairobi_locations.json` is dropped. Tests check no listed name is a place | Same effect |
+| Ambiguous names | A separate list (Mercy, Baraka, Imani…) hidden only next to a word in `context_words` | As planned |
+| Normalise typos first | The phone pattern accepts a capital O for a zero and any spacing | Changing the text before detection would shift every offset |
+| ID_NUMBER, ADDRESS | Not built | No labelled examples yet. Add when T17 has some |
+| Presidio's anonymizer sample | Our own `redact()` and `restore()` | A new mapping per call, by construction |
+
+Other points:
+- **Presidio reuses the spaCy model** from fact extraction (`en_core_web_sm`), so it never loads or downloads its default large model.
+- **No network calls.** Presidio's email recognizer downloads a list of web domains on first use. Ours uses the copy bundled with `tldextract`, and a test blocks the network to keep it that way.
+- **Same detail, same placeholder.** `0712 345 678` and `+254712345678` both become `<PHONE_1>`.
+- **`restore()` reports problems.** It returns the placeholders missing from the draft and any it does not recognise, so the caller (T31) can fall back to template wording.
+
+### Results
+
+Run `python scripts/score_pipeline.py` from `api/` (see [api.md](api.md)).
+
+| Set | PERSON | PHONE | PLATE | MPESA_CODE | Facts kept |
+|---|---|---|---|---|---|
+| Build (110 cases) | 100% (20/20) | 100% (7/7) | 100% (18/18) | 100% (4/4) | 100% (372/372) |
+| Held-out (40 cases) | 100% (5/5) | 100% (5/5) | 100% (6/6) | 100% (3/3) | 100% (140/140) |
+
+Every detection was also correct (no false hits). These numbers are optimistic: the synthetic stories come from one generator, and its 24 names are all common enough to be on the names list. Mercy's real test set (T17) is the deciding check.
+
+Known gaps, from hand-written test stories:
+- Names that are not on the list and do not follow a naming phrase ("rider alikuwa Mwanaidi").
+- ID numbers and home addresses.
+- Very old plates without a final letter ("KCZ 123").
+
+Memory and speed, measured locally: the API uses 49 MB on its own and 173 MB with spaCy and Presidio loaded. Filtering plus fact extraction takes about 4 ms per story. Python 3.14 builds of spaCy and Presidio exist and load in the Linux Docker image. Still to measure on Cloud Run itself.
 
 ## Consent-based storage (case tracking)
 
