@@ -17,10 +17,8 @@ How it works:
 
 from __future__ import annotations
 
-import json
 import threading
 from functools import lru_cache
-from pathlib import Path
 
 from spacy.language import Language
 from spacy.matcher import Matcher
@@ -28,6 +26,7 @@ from spacy.tokens import Doc, Span
 from spacy.util import filter_spans
 
 from ..schemas import Entity
+from .data_files import load_json
 from .nlp import get_nlp
 
 RULER_NAME = "sauti_fact_ruler"
@@ -54,7 +53,7 @@ MONTHS = [
 PART_OF_DAY = ["morning", "afternoon", "evening", "night"]
 # Swahili times: "saa nne asubuhi" (10am), "saa tatu usiku" (9pm).
 SW_HOURS = ["moja", "mbili", "tatu", "nne", "tano", "sita", "saba", "nane", "tisa", "kumi"]
-SW_PART_OF_DAY = ["asubuhi", "mchana", "jioni", "usiku", "alfajiri", "usiku wa manane"]
+SW_PART_OF_DAY = ["asubuhi", "mchana", "jioni", "usiku", "alfajiri"]
 
 CURRENCY_WORDS = ["ksh", "kshs", "ksh.", "kes", "sh", "shs", "sh.", "bob"]
 CURRENCY_AFTER = ["ksh", "kshs", "kes", "bob", "shillings", "shilingi", "/-", "/="]
@@ -75,27 +74,13 @@ WEAK_CUE_LEADS = {"fare", "instead", "paid", "cost", "nauli", "balance", "price"
 
 NUMBER_REGEX = r"^\d{1,3}(,\d{3})+$|^\d{2,6}$"
 
-# --- data file ----------------------------------------------------------
-
-
-def _find_data_file(name: str) -> Path:
-    here = Path(__file__).resolve()
-    for data_dir in (here.parents[3] / "data", here.parents[2] / "data"):  # repo, Docker
-        if (data_dir / name).exists():
-            return data_dir / name
-    raise FileNotFoundError(f"data/{name} not found")
-
-
-def _load_places() -> list[dict]:
-    return json.loads(_find_data_file("nairobi_locations.json").read_text())["places"]
-
 
 # --- patterns -----------------------------------------------------------
 
 
 def _place_patterns(nlp: Language) -> list[dict]:
     patterns = []
-    for place in _load_places():
+    for place in load_json("nairobi_locations.json")["places"]:
         attr = "ORTH" if place.get("match_case") else "LOWER"
         for name in [place["name"], *place.get("aliases", [])]:
             values = [t.text if attr == "ORTH" else t.lower_ for t in nlp.tokenizer(name)]
