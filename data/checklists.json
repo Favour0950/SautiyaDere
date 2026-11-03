@@ -5,13 +5,13 @@
         "item_id": "TRIP_RECEIPT_SCREENSHOT",
         "label": "Trip ID & In-App Receipt Screenshot",
         "source": "NTSA LN 120 Reg 12(4) & Platform Terms (Uber/Bolt/Faras/Yego/Little)",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Shows the official Trip ID, upfront fare breakdown, and distance/duration recorded by the app."
       },
       {
         "item_id": "MPESA_STATEMENT",
         "label": "M-Pesa Statement / Cash Payment Confirmation",
         "source": "TAWU Financial Dispute Checklist & Platform Earnings Policy",
-        "reason": "Platforms require proof of digital payment transfer or non-payment to verify contested trip fares."
+        "reason": "An M-Pesa Statement provides verifiable proof of the exact digital payment received or non-payment for contested trip fares."
       }
     ],
     "optional": [
@@ -19,13 +19,13 @@
         "item_id": "GPS_ROUTE_LOG",
         "label": "GPS Route & Google Maps Timeline Log",
         "source": "TAWU Appeal Best Practice & Platform Distance Dispute Terms",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Confirms the actual route driven and traffic delays when the final fare differs from the upfront estimate."
       },
       {
         "item_id": "IN_APP_CHAT_SCREENSHOT",
         "label": "In-App Chat / Customer Call Screenshot",
         "source": "TAWU Grievance Protocol (Fare Agreement)",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Documents any in-app messages where the passenger agreed to a route change, stop, or cash/M-Pesa payment."
       }
     ]
   },
@@ -35,13 +35,13 @@
         "item_id": "DEACTIVATION_NOTICE",
         "label": "Deactivation Notice / App Fraud Warning Screen",
         "source": "NTSA LN 120 Reg 15(1) & Uber/Bolt/Little Fraud Policies",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Establishes the exact algorithmic allegation and date of suspension required for formal due-process review under NTSA Reg 15(1)."
       },
       {
         "item_id": "CHRONOLOGICAL_TRIP_LOG",
         "label": "Chronological Trip Log & Explanation",
         "source": "TAWU Legal Guidance on Algorithmic Locks",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Provides a trip-by-trip timeline accounting for flagged journeys, network drops, or legitimate repeat pickups."
       }
     ],
     "optional": [
@@ -49,13 +49,13 @@
         "item_id": "LOCATION_HISTORY_EXPORT",
         "label": "Google Maps Location History Export",
         "source": "TAWU Anti-Algorithmic Bias Protocol",
-        "reason": "Verifies actual vehicle trajectory and drop-off coordinates against passenger dispute claims."
+        "reason": "Verifies actual vehicle trajectory and drop-off coordinates against automated GPS-spoofing or fake-trip flags."
       },
       {
         "item_id": "PASSENGER_MPESA_RECEIPT",
         "label": "Passenger M-Pesa Receipt for Cash Trip",
         "source": "Little Cab / Faras Financial Audit Terms",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Proves that a real paying passenger completed the trip and paid via M-Pesa, refuting collusive or ghost-trip claims."
       }
     ]
   },
@@ -65,7 +65,7 @@
         "item_id": "INCIDENT_TIMESTAMP_LOG",
         "label": "Incident Details & Exact Timestamp Log",
         "source": "NTSA LN 120 Reg 11(e) & Reg 18(2)",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Incident Details and exact timestamps allow platform safety teams to match your report against trip telemetry under NTSA Reg 18(2)."
       },
       {
         "item_id": "POLICE_ABSTRACT",
@@ -85,7 +85,7 @@
         "item_id": "WITNESS_STATEMENT",
         "label": "Third-Party / Security Guard / Witness Statement",
         "source": "TAWU Incident Defense Protocol",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Corroborates your account using an independent observer such as a stage marshal, estate guard, or bystander."
       }
     ]
   },
@@ -95,13 +95,13 @@
         "item_id": "IN_APP_CHAT_SCREENSHOT",
         "label": "In-App Conversation / Call Activity Screenshot",
         "source": "Platform Community Guidelines & TAWU Note",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Shows polite communication, pickup pin mismatches, or rider requests to cancel before the dispute occurred."
       },
       {
         "item_id": "DRIVER_COUNTER_STATEMENT",
         "label": "Written Driver Counter-Statement",
         "source": "NTSA LN 120 Reg 15 Due Process Mandate",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Exercises your statutory right to be heard under NTSA Reg 15(1) by recording your factual version of the interaction."
       }
     ],
     "optional": [
@@ -115,7 +115,7 @@
         "item_id": "DRIVER_RATING_HISTORY",
         "label": "Historical Driver Star Rating & Compliment History",
         "source": "Uber / Bolt / Yego Quality Review Terms",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Demonstrates a consistent track record of safe, professional service prior to an isolated retaliatory rating."
       }
     ]
   },
@@ -125,19 +125,19 @@
         "item_id": "NATIONAL_ID_DRIVER_LICENSE",
         "label": "Valid Kenyan National ID & Driver License",
         "source": "NTSA LN 120 Reg 21(a)",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Confirms driver identity and valid Kenyan driving class authorization under NTSA Reg 21(a)."
       },
       {
         "item_id": "PSV_BADGE_POLICE_CLEARANCE",
         "label": "Valid PSV Badge & Police Clearance Certificate (Good Conduct)",
         "source": "NTSA LN 120 Reg 21(b) & Little/Faras Onboarding Standards",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Proves active statutory PSV licensing and valid DCI Certificate of Good Conduct required under NTSA Reg 21(b)."
       },
       {
         "item_id": "VEHICLE_INSPECTION_INSURANCE",
         "label": "Valid Vehicle Inspection Certificate & PSV Insurance Cover",
         "source": "NTSA LN 120 Reg 15(1)(a-b)",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Verifies current NTSA annual vehicle roadworthiness inspection and valid commercial PSV insurance."
       }
     ],
     "optional": [
@@ -145,13 +145,13 @@
         "item_id": "SELFIE_PHOTO",
         "label": "Real-Time Clear Selfie Photo",
         "source": "Uber Real-Time ID / Bolt Selfie Verification Standard",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Resolves automated facial-recognition or liveness-check lockouts caused by poor lighting or camera glare."
       },
       {
         "item_id": "VEHICLE_PHOTOS",
         "label": "Vehicle Photos (Front, Back, Dashboard, Interior)",
         "source": "NTSA Reg 15 Maintenance & Platform Onboarding Checklist",
-        "reason": "Provides essential verification required under platform guidelines and regulatory standards."
+        "reason": "Confirms registration plate visibility and clean vehicle condition following a vehicle-quality hold."
       }
     ]
   }
