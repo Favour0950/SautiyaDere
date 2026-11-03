@@ -1,0 +1,18 @@
+# Builds the API image from the repo root so data/ is included.
+# Run from the repo root:
+#   gcloud builds submit --config api/cloudbuild.yaml .
+# Then deploy the image with `gcloud run deploy` (see docs/api.md).
+substitutions:
+  _REGION: europe-west1
+  _REPO: sauti
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/sauti-api:latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "api/Dockerfile", "-t", "${_IMAGE}", "."]
+
+images:
+  - ${_IMAGE}
+
+options:
+  dynamicSubstitutions: true

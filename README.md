@@ -10,6 +10,7 @@ Everyone uses this structure, on every branch.
 sauti-ya-dere/
 ├── README.md      this file, the only markdown outside docs/
 ├── .env.example   template for local secrets (copy to .env, never commit .env)
+├── .dockerignore  the only files allowed into the API image (built from the repo root)
 ├── docs/          all documentation
 ├── data/          datasets, schema, knowledge base, and the scripts that make or check them
 ├── web/           PWA front end (Vite + React), deployed to Cloudflare Pages
