@@ -261,21 +261,33 @@ def _facts(doc: Doc, matcher: Matcher) -> list[Span]:
     return [s for s in ours + from_model if not _is_placeholder(s)]
 
 
+def fact_spans(text: str) -> list[tuple[str, int, int]]:
+    """Return every fact as (label, start, end) character offsets, in order.
+
+    Repeats are kept. Used by extract() and by scripts/score_pipeline.py,
+    which compares these offsets with the labelled ones.
+    """
+    nlp, matcher = _pipeline()
+    spans = []
+    for span in sorted(_facts(nlp(text), matcher), key=lambda s: s.start):
+        end = span.end_char
+        if span.label_ in {"LOCATION", "DATE"} and span.text.endswith("."):
+            end -= 1  # "South C." -> "South C"; TIME keeps "a.m."
+        spans.append((span.label_, span.start_char, end))
+    return spans
+
+
 def extract(text: str) -> list[Entity]:
     """Return the facts in a (redacted) story, in the order they appear.
 
     Repeats are dropped: "Westlands" mentioned twice comes back once.
     """
-    nlp, matcher = _pipeline()
-    doc = nlp(text)
     seen: set[tuple[str, str]] = set()
     facts: list[Entity] = []
-    for span in sorted(_facts(doc, matcher), key=lambda s: s.start):
-        text = span.text
-        if span.label_ in {"LOCATION", "DATE"}:
-            text = text.rstrip(".")  # "South C." -> "South C"; TIME keeps "a.m."
-        key = (span.label_, text.lower())
+    for label, start, end in fact_spans(text):
+        value = text[start:end]
+        key = (label, value.lower())
         if key not in seen:
             seen.add(key)
-            facts.append(Entity(label=span.label_, text=text))
+            facts.append(Entity(label=label, text=value))
     return facts
