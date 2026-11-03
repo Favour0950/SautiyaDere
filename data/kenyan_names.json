@@ -1,0 +1,64 @@
+{
+  "description": "Kenyan first names and surnames for the personal-details filter (T15). Names in 'names' are always hidden, whatever their case. Names in 'ambiguous' are also everyday words, so they are only hidden when a word from 'context_words' comes just before or after them. A starting list: please add names, keeping each one in only one list.",
+  "names": [
+    "Wanjiku", "Wambui", "Njeri", "Nyambura", "Wairimu", "Wanjiru", "Wangari", "Waithera", "Wangui",
+    "Muthoni", "Njoki", "Gathoni", "Nyokabi", "Wahu", "Wacera", "Nduta", "Wangeci", "Mumbi", "Waceke",
+    "Kamau", "Mwangi", "Njoroge", "Kariuki", "Maina", "Kimani", "Ndungu", "Githinji", "Gitau",
+    "Macharia", "Mugo", "Waweru", "Wainaina", "Kinyanjui", "Muriuki", "Njenga", "Karanja", "Mbugua",
+    "Kiarie", "Kuria", "Ngugi", "Irungu", "Wachira", "Mathenge", "Muchiri", "Njuguna", "Kibe",
+    "Kihara", "Thuo", "Wanjohi", "Gachanja", "Kagiri", "Ndegwa", "Nderitu", "Gichuki", "Muigai",
+
+    "Otieno", "Odhiambo", "Ochieng", "Onyango", "Omondi", "Okoth", "Owino", "Ouma", "Oduor",
+    "Okello", "Opiyo", "Oloo", "Obiero", "Ogola", "Ojwang", "Odera", "Otiende", "Okumu", "Oketch",
+    "Achieng", "Akinyi", "Atieno", "Adhiambo", "Awino", "Anyango", "Auma", "Akoth", "Apiyo", "Aoko",
+    "Akeyo", "Adoyo",
+
+    "Wafula", "Simiyu", "Wekesa", "Barasa", "Wanjala", "Nekesa", "Nafula", "Naliaka", "Nasimiyu",
+    "Makokha", "Shikuku", "Mukhwana", "Khaemba", "Wamalwa", "Masinde", "Mulongo", "Wanyonyi",
+    "Wasike", "Nanjala", "Khisa", "Opondo", "Namukhwana",
+
+    "Kiprono", "Kipchumba", "Kiprotich", "Kipkemboi", "Kipkoech", "Kibet", "Kiptoo", "Cheruiyot",
+    "Rotich", "Koech", "Kirui", "Langat", "Mutai", "Bett", "Kosgei", "Ruto", "Chebet", "Chepkoech",
+    "Jeptoo", "Jepkosgei", "Cherono", "Chelangat", "Jebet", "Chepngetich", "Kemboi", "Kiplagat",
+    "Kipruto", "Korir", "Tanui", "Kiplimo", "Jepchirchir", "Chepkemoi", "Kipngeno",
+
+    "Mutua", "Musyoka", "Mutuku", "Kioko", "Muthama", "Kilonzo", "Mwikali", "Mueni", "Ndinda",
+    "Mumbua", "Nduku", "Kavata", "Wayua", "Kalondu", "Nzioka", "Musembi", "Mulwa", "Kyalo",
+    "Kitheka", "Mutiso", "Munyao", "Nzomo", "Mbithi", "Kasyoka",
+
+    "Mutwiri", "Kirimi", "Gitonga", "Kinoti", "Mwiti", "Murithi", "Kendi", "Kawira", "Nkatha",
+    "Gatwiri", "Kagwiria", "Mugambi", "Muthomi", "Njeru", "Ireri", "Nyaga", "Mbaabu", "Kathure",
+
+    "Nyamweya", "Ongeri", "Moraa", "Kemunto", "Kerubo", "Nyaboke", "Bosire", "Onsongo", "Momanyi",
+    "Ombati", "Nyakundi", "Kwamboka", "Mokaya", "Bonareri", "Mogaka",
+
+    "Kahindi", "Katana", "Kazungu", "Kenga", "Charo", "Mwanaisha", "Fatuma", "Mwanajuma",
+    "Rashid", "Omar", "Hassan", "Abdi", "Mohamed", "Mohammed", "Ahmed", "Salim", "Bakari",
+    "Athumani", "Zuhura", "Halima", "Amina", "Zainab", "Khadija", "Mariam", "Hussein", "Farah",
+    "Ibrahim", "Yusuf", "Osman", "Hirsi", "Abdullahi", "Mwanaharusi",
+
+    "Saitoti", "Sankale", "Naserian", "Nashipai", "Sintamei", "Lemayian", "Parsimei",
+
+    "John", "Peter", "James", "Joseph", "David", "Daniel", "Samuel", "Paul", "Stephen", "Michael",
+    "George", "Francis", "Patrick", "Kevin", "Brian", "Dennis", "Collins", "Victor", "Eric",
+    "Kennedy", "Moses", "Isaac", "Simon", "Charles", "Anthony", "Martin", "Robert", "Evans",
+    "Felix", "Elijah", "Allan", "Duncan", "Geoffrey", "Wycliffe", "Edwin", "Alex", "Timothy",
+    "Mary", "Jane", "Ann", "Anne", "Elizabeth", "Margaret", "Lucy", "Esther", "Sarah", "Ruth",
+    "Susan", "Catherine", "Nancy", "Caroline", "Diana", "Sharon", "Winnie", "Lilian", "Agnes",
+    "Beatrice", "Christine", "Dorcas", "Eunice", "Gladys", "Irene", "Janet", "Judith", "Lydia",
+    "Monica", "Naomi", "Phyllis", "Rachel", "Rebecca", "Stella", "Teresa", "Veronica", "Josephine",
+    "Brenda", "Cynthia", "Maureen", "Millicent", "Pauline", "Edith", "Doris", "Florence", "Emily"
+  ],
+  "ambiguous": [
+    "Mercy", "Grace", "Faith", "Joy", "Hope", "Charity", "Patience", "Purity", "Gift", "Violet",
+    "Rose", "Joyce", "Precious", "Lucky", "Mark", "Will", "Frank", "Said", "Sang",
+    "Baraka", "Imani", "Neema", "Amani", "Zawadi", "Upendo", "Furaha", "Rehema", "Tumaini", "Pendo",
+    "Subira", "Hekima", "Bahati", "Nuru", "Juma", "Hamisi", "Baya", "Wanyama", "Mwende", "Ali", "Asha"
+  ],
+  "context_words": [
+    "name", "named", "called", "rider", "passenger", "customer", "client", "driver", "officer",
+    "mr", "mrs", "ms", "miss", "madam", "sir", "brother", "sister",
+    "jina", "anaitwa", "aitwaye", "nilimpigia", "mteja", "abiria", "dereva", "afisa", "bwana",
+    "mama", "dada", "kaka", "mzee", "alikuwa", "alinipigia", "alisema"
+  ]
+}
