@@ -104,8 +104,8 @@ Code: `api/app/services/redaction.py`. Tests: `api/tests/test_redaction.py`. It 
 
 | Plan above | What was built | Why |
 |---|---|---|
-| GLiNER model for names | Names list (`data/kenyan_names.json`, about 300 names) plus any word after "anaitwa", "jina lake ni", "name is", "named" | Avoids a ~1 GB model for now. GLiNER is the next step if the real test set (T17) shows too many missed names |
-| Allow-list of places | Any detected name that is in `data/nairobi_locations.json` is dropped. Tests check no listed name is a place | Same effect |
+| GLiNER model for names | Names list (`data/kenyan_names.json`, about 830 names from across Kenya's communities, plus about 60 ambiguous ones) plus any word after "anaitwa", "jina lake ni", "name is", "named" | Avoids a ~1 GB model for now. GLiNER is the next step if the real test set (T17) shows too many missed names |
+| Allow-list of places | A detected name that is, or sits inside, a place in `data/nairobi_locations.json` (about 270 places) is dropped, so "Karen" and "Dennis Pritt Road" stay. Tests check no listed name is itself a place | Same effect |
 | Ambiguous names | A separate list (Mercy, Baraka, Imani…) hidden only next to a word in `context_words` | As planned |
 | Normalise typos first | The phone pattern accepts a capital O for a zero and any spacing | Changing the text before detection would shift every offset |
 | ID_NUMBER, ADDRESS | Not built | No labelled examples yet. Add when T17 has some |
@@ -133,7 +133,7 @@ Known gaps, from hand-written test stories:
 - ID numbers and home addresses.
 - Very old plates without a final letter ("KCZ 123").
 
-Memory and speed, measured locally: the API uses 49 MB on its own and 173 MB with spaCy and Presidio loaded. Filtering plus fact extraction takes about 4 ms per story. Python 3.14 builds of spaCy and Presidio exist and load in the Linux Docker image. Still to measure on Cloud Run itself.
+Memory and speed, measured locally: the API uses 49 MB on its own and 175 MB with spaCy and Presidio loaded. Filtering plus fact extraction takes about 4 ms per story. Python 3.14 builds of spaCy and Presidio exist and load in the Linux Docker image. Still to measure on Cloud Run itself.
 
 ## Consent-based storage (case tracking)
 

@@ -67,6 +67,15 @@ def test_names_not_on_the_list_after_a_naming_phrase(text, name):
     assert hidden(text) == [("PERSON", name)]
 
 
+@pytest.mark.parametrize("place", ["Dennis Pritt Road", "Mama Lucy Hospital", "Ronald Ngala Street"])
+def test_names_inside_place_names_are_kept(place):
+    assert hidden(f"I dropped the rider at {place} yesterday") == []
+
+
+def test_same_name_outside_a_place_is_still_hidden():
+    assert hidden("rider Dennis took me to Dennis Pritt Road") == [("PERSON", "Dennis")]
+
+
 def test_naming_phrase_before_a_place_keeps_the_place():
     assert hidden("the stage named Kencom was busy") == []
 

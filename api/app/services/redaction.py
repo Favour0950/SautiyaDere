@@ -179,21 +179,31 @@ _LABELS = {"EMAIL_ADDRESS": "EMAIL"}
 
 
 @lru_cache(maxsize=1)
-def _place_names() -> frozenset[str]:
+def _place_regex() -> re.Pattern:
+    """Matches any listed place, longest first, ignoring case."""
     places = load_json("nairobi_locations.json")["places"]
-    return frozenset(n.lower() for p in places for n in [p["name"], *p.get("aliases", [])])
+    names = sorted(
+        {n for p in places for n in [p["name"], *p.get("aliases", [])]}, key=len, reverse=True
+    )
+    return re.compile(r"\b(?:" + "|".join(re.escape(n) for n in names) + r")\b", re.IGNORECASE)
+
+
+def _inside_a_place(start: int, end: int, places: list[tuple[int, int]]) -> bool:
+    return any(p_start <= start and end <= p_end for p_start, p_end in places)
 
 
 def find_personal_details(text: str) -> list[tuple[str, int, int]]:
     """Return personal details as (label, start, end), in order, without overlaps.
 
     When two detections overlap the longer wins, then the higher score: an
-    email address beats the name inside it. A "name" that is a Nairobi place
-    is dropped: the appeal needs places.
+    email address beats the name inside it. A "name" that is, or sits inside,
+    a listed place is dropped: "Karen", "Dennis Pritt Road" and "Mama Lucy
+    Hospital" stay, because the appeal needs places.
     """
+    places = [m.span() for m in _place_regex().finditer(text)]
     results = [
         r for r in _analyzer().analyze(text=text, language=LANGUAGE)
-        if not (r.entity_type == "PERSON" and text[r.start:r.end].lower() in _place_names())
+        if not (r.entity_type == "PERSON" and _inside_a_place(r.start, r.end, places))
     ]
     ranked = sorted(results, key=lambda r: (-(r.end - r.start), -r.score, r.start))
     chosen: list = []
