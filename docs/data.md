@@ -7,6 +7,8 @@
 | `validate.py` | Checks records against the schema, plus span offsets, overlaps and held/missing evidence | T06 |
 | `case_rules.py` | Draft checklists and policy rule IDs, replaced by `checklists.json` (T07) and `policies.json` (T08) | T07, T08 |
 | `generate.py` | Synthetic case generator, writes `synthetic/cases.jsonl` | T11 |
+| `nairobi_locations.json` | Nairobi areas, roads and landmarks with aliases. Fact extraction tags them as LOCATION; the filter never hides them | T16, T15 |
+| `kenyan_names.json` | Common Kenyan names (always hidden), names that are also everyday words (hidden only near a context word), and the context words | T15 |
 | `tests/` | Tests for all of the above | |
 | `knowledge/` | Evidence checklists and policy knowledge base (`checklists.json`, `policies.json`) | T07, T08 |
 | `real/` | Optional local copy of real cases for testing. Gitignored, never committed | |
