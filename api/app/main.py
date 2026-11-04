@@ -23,11 +23,18 @@ from .services.sms import send_timeline_reminder
 app = FastAPI(title="Sauti ya Dere API", version="0.1.0")
 api_router = APIRouter(prefix="/api")
 
+# Configure CORS to allow Vercel and local testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=[
+        "https://sautiya-dere-wp15.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "*",  # Wildcard allows all origins for preflight requests
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
