@@ -216,6 +216,202 @@ const KENYAN_NAMES = [
 ]
 
 /**
+ * Validate a Kenyan Mobile Phone Number (Safaricom / Airtel / Telkom: 07XX or 01XX or +2547/1XX)
+ */
+export function validateKenyanPhone(raw: string): {
+  valid: boolean
+  formatted: string
+  error: string
+} {
+  const trimmed = (raw || '').trim()
+  if (!trimmed) {
+    return {
+      valid: false,
+      formatted: '',
+      error: 'Please enter your Kenyan mobile number (e.g., 0712 345 678).'
+    }
+  }
+
+  // Reject any letters or invalid characters
+  if (/[^0-9+\s-]/.test(trimmed)) {
+    return {
+      valid: false,
+      formatted: trimmed,
+      error: 'Phone number must contain digits only (no letters or symbols).'
+    }
+  }
+
+  const compact = trimmed.replace(/[\s-]/g, '')
+
+  // Case 1: 07XXXXXXXX or 01XXXXXXXX (10 digits)
+  if (/^0[17]\d{8}$/.test(compact)) {
+    const formatted = `${compact.slice(0, 4)} ${compact.slice(4, 7)} ${compact.slice(7)}`
+    return { valid: true, formatted, error: '' }
+  }
+
+  // Case 2: +2547XXXXXXXX or +2541XXXXXXXX (13 chars) or 2547XXXXXXXX (12 digits)
+  const withoutPlus = compact.startsWith('+') ? compact.slice(1) : compact
+  if (/^254[17]\d{8}$/.test(withoutPlus)) {
+    const local = `0${withoutPlus.slice(3)}`
+    const formatted = `${local.slice(0, 4)} ${local.slice(4, 7)} ${local.slice(7)}`
+    return { valid: true, formatted, error: '' }
+  }
+
+  const digitCount = compact.replace(/\D/g, '').length
+  if (digitCount < 10) {
+    return {
+      valid: false,
+      formatted: trimmed,
+      error: `Too short (${digitCount} digits). A Kenyan mobile number must have 10 digits starting with 07 or 01 (e.g., 0712 345 678).`
+    }
+  }
+  if (digitCount > 12) {
+    return {
+      valid: false,
+      formatted: trimmed,
+      error: `Too long (${digitCount} digits). Enter a 10-digit Kenyan number starting with 07 or 01.`
+    }
+  }
+
+  return {
+    valid: false,
+    formatted: trimmed,
+    error: 'Invalid Kenyan format. Must start with 07, 01, or +2547 / +2541 (e.g., 0712 345 678).'
+  }
+}
+
+/**
+ * Inspect an uploaded image/file to verify it looks like an app screenshot or PDF document
+ * rather than a random camera photograph (e.g., a person holding an award or a portrait).
+ */
+export async function verifyUploadedScreenshot(file: File): Promise<{
+  valid: boolean
+  reason: string
+}> {
+  const lowerName = file.name.toLowerCase()
+
+  // PDFs are valid official documents (e.g., M-Pesa statement or Police Abstract PDF)
+  if (file.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
+    return {
+      valid: true,
+      reason: `Verified PDF document (${file.name}).`
+    }
+  }
+
+  if (!file.type.startsWith('image/')) {
+    return {
+      valid: false,
+      reason: 'Unsupported file format. Please upload a screenshot image (PNG/JPG) or PDF.'
+    }
+  }
+
+  // Check obvious non-screenshot photo keywords in filename
+  if (/\b(award|trophy|selfie|portrait|person|wedding|party|vacation|dsc_|pxl_|img_\d{4})\b/i.test(lowerName)) {
+    return {
+      valid: false,
+      reason:
+        'This file appears to be a camera photograph rather than an app screenshot. Please upload a screenshot of your suspension notice, trip receipt, or M-Pesa message.'
+    }
+  }
+
+  // Analyze actual image pixels & aspect ratio on an offscreen canvas
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const width = img.naturalWidth || img.width
+      const height = img.naturalHeight || img.height
+
+      try {
+        const canvas = document.createElement('canvas')
+        const sampleSize = 100
+        canvas.width = sampleSize
+        canvas.height = sampleSize
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve({ valid: true, reason: `Image attached (${width}×${height}px).` })
+          return
+        }
+        ctx.drawImage(img, 0, 0, sampleSize, sampleSize)
+        const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data
+
+        let flatUiPixels = 0
+        let skinLikePixels = 0
+        let sharpTextTransitions = 0
+        const totalPixels = sampleSize * sampleSize
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i]
+          const g = data[i + 1]
+          const b = data[i + 2]
+
+          // App UI backgrounds are predominantly near-white, light slate, or uniform dark-mode gray/black
+          const isNearWhite = r > 235 && g > 235 && b > 235
+          const isLightSlate =
+            r > 215 && g > 215 && b > 215 && Math.abs(r - g) <= 10 && Math.abs(g - b) <= 10
+          const isDarkUi =
+            r < 42 && g < 45 && b < 52 && Math.abs(r - g) <= 10 && Math.abs(g - b) <= 12
+
+          if (isNearWhite || isLightSlate || isDarkUi) {
+            flatUiPixels += 1
+          }
+
+          // Detect warm natural camera/skin/wood tones common in portraits/award photos
+          if (r > 95 && g > 40 && b > 20 && r > g + 15 && g > b && r - b > 30) {
+            skinLikePixels += 1
+          }
+
+          // Detect sharp horizontal luminance jumps typical of UI text on flat backgrounds
+          if (i >= 4) {
+            const prevLum = (data[i - 4] + data[i - 3] + data[i - 2]) / 3
+            const currLum = (r + g + b) / 3
+            if (Math.abs(currLum - prevLum) > 95) {
+              sharpTextTransitions += 1
+            }
+          }
+        }
+
+        const flatUiRatio = flatUiPixels / totalPixels
+        const skinRatio = skinLikePixels / totalPixels
+        const isLandscapePhoto = width > height * 1.15
+
+        // Camera photos of people/awards/outdoors have low flat UI background (< 0.26)
+        // or high skin/natural tones, whereas app screenshots have flat UI cards + text
+        if (
+          flatUiRatio < 0.26 ||
+          (skinRatio > 0.14 && flatUiRatio < 0.45) ||
+          (isLandscapePhoto && flatUiRatio < 0.45) ||
+          sharpTextTransitions < 80
+        ) {
+          resolve({
+            valid: false,
+            reason:
+              'Image rejected: Our visual check detected a camera photo/portrait rather than a platform app screen or receipt. Please upload an actual screenshot of your Uber/Bolt/Little notice, trip receipt, or M-Pesa statement.'
+          })
+          return
+        }
+
+        resolve({
+          valid: true,
+          reason: `Verified app screenshot layout (${width}×${height}px, ${Math.round(flatUiRatio * 100)}% UI surface).`
+        })
+      } catch {
+        resolve({ valid: true, reason: `Screenshot attached (${width}×${height}px).` })
+      }
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve({
+        valid: false,
+        reason: 'Could not read image file. Please select a valid PNG or JPG screenshot.'
+      })
+    }
+    img.src = url
+  })
+}
+
+/**
  * 1. Redact Personal Details (T15)
  */
 export function redactPii(text: string): { redacted: string; items: RedactedPiiItem[] } {
@@ -485,42 +681,32 @@ export function evaluateEvidence(caseType: string, evidenceHeld: string[]) {
 
 /**
  * 5. Generate Grounded Legal Appeal Statement (T08 / T18 / T27)
+ * Structured as an official 5-section Kenyan Legal & TAWU Union Grievance Dossier.
  */
 export function buildAppealDossier(params: {
   caseType: string
   platform: string
   driverName: string
+  driverPhone?: string
   narrative: string
   entities: ExtractedEntity[]
   evidenceHeld: string[]
 }): { headline: string; body: string; policy_rules: string[] } {
-  const { caseType, platform, driverName, narrative, entities, evidenceHeld } = params
-  const plat = platform || 'Platform'
-  const name = driverName?.trim() || 'Authorized PSV Driver'
+  const { caseType, platform, driverName, driverPhone, narrative, entities, evidenceHeld } = params
+  const plat = platform || 'Bolt'
+  const name = driverName?.trim() || 'Registered PSV Driver Partner'
+  const phoneLine = driverPhone?.trim() ? ` | Tel: ${driverPhone.trim()}` : ''
+  const filingDate = new Date().toLocaleDateString('en-KE', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  })
 
   const dates = entities.filter((e) => e.label === 'DATE').map((e) => e.text)
   const times = entities.filter((e) => e.label === 'TIME').map((e) => e.text)
   const locations = entities.filter((e) => e.label === 'LOCATION').map((e) => e.text)
   const amounts = entities.filter((e) => e.label === 'MONEY').map((e) => e.text)
   const tripIds = entities.filter((e) => e.label === 'TRIP_ID').map((e) => e.text)
-
-  // Only include facts the driver actually stated — never invent placeholders
-  const factFragments: string[] = []
-  if (dates.length > 0 || times.length > 0) {
-    factFragments.push(`on ${[dates[0], times[0]].filter(Boolean).join(' at ')}`)
-  }
-  if (locations.length >= 2) {
-    factFragments.push(`from ${locations[0]} to ${locations[1]}`)
-  } else if (locations.length === 1) {
-    factFragments.push(`in ${locations[0]}`)
-  }
-  if (amounts.length > 0) {
-    factFragments.push(`involving ${amounts[0]}`)
-  }
-  if (tripIds.length > 0) {
-    factFragments.push(`(Trip ID: ${tripIds[0]})`)
-  }
-  const tripContextClause = factFragments.length > 0 ? ` (${factFragments.join(', ')})` : ''
 
   const platRuleMap: Record<string, string> = {
     Bolt: 'POL-BOLT-12',
@@ -530,108 +716,98 @@ export function buildAppealDossier(params: {
   }
   const platRule = platRuleMap[plat] || 'POL-NTSA-15'
 
+  const categoryTitles: Record<string, string> = {
+    fare_dispute: 'FARE & EARNINGS RECONCILIATION APPEAL',
+    passenger_safety: 'SAFETY & CONDUCT ALLEGATION COUNTER-APPEAL',
+    rating_or_cancellation: 'RATING & CANCELLATION PENALTY APPEAL',
+    fraud_flag: 'ALGORITHMIC & ACCOUNT INTEGRITY FLAG APPEAL'
+  }
+  const categoryTitle = categoryTitles[caseType] || 'DRIVER ACCOUNT REINSTATEMENT APPEAL'
+
+  const policyRulesMap: Record<string, string[]> = {
+    fare_dispute: ['POL-NTSA-13', 'POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01', platRule],
+    passenger_safety: ['POL-NTSA-15', 'POL-NTSA-18', 'POL-DPA-26', 'POL-TAWU-01', platRule],
+    rating_or_cancellation: ['POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01', platRule],
+    fraud_flag: ['POL-NTSA-15', 'POL-NTSA-21', 'POL-DPA-26', 'POL-TAWU-01', platRule]
+  }
+  const policyRules = policyRulesMap[caseType] || ['POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01']
+
+  // Build Section 1: Incident Particulars strictly from facts the driver provided
+  const particulars: string[] = [`• Platform: ${plat} Kenya`]
+  if (dates.length > 0 || times.length > 0) {
+    particulars.push(`• Incident Date & Time: ${[dates.join(', '), times.join(', ')].filter(Boolean).join(' at ')}`)
+  }
+  if (locations.length > 0) {
+    particulars.push(`• Route / Location: ${locations.join(' → ')}`)
+  }
+  if (amounts.length > 0) {
+    particulars.push(`• Disputed Amount: ${amounts.join(', ')}`)
+  }
+  if (tripIds.length > 0) {
+    particulars.push(`• Trip Reference ID: ${tripIds.join(', ')}`)
+  }
+
+  // Build Section 3: Corroborating Evidence Record
   const checklist = CASE_CHECKLISTS[caseType] || CASE_CHECKLISTS.fare_dispute
   const heldLabels = checklist
     .filter((item) => evidenceHeld.includes(item.item_id))
-    .map((item) => item.label)
-  const evidenceParagraph =
+    .map((item) => `• [HELD] ${item.label} (${item.source})`)
+  const evidenceBlock =
     heldLabels.length > 0
-      ? `\nSupporting Evidence Held by Driver:\n- ${heldLabels.join('\n- ')}\n`
-      : ''
+      ? heldLabels.join('\n')
+      : '• Driver requests manual inspection of in-app GPS telemetry, timestamp logs, and account history held on platform servers.'
 
+  // Build Section 4: Statutory & Policy Grounds specific to caseType
+  const statutoryLines: string[] = [
+    '• NTSA Legal Notice 120 of 2022, Reg. 15(1) (POL-NTSA-15): Mandates fair administrative action, written reasons, and the right to be heard before adverse account action.',
+    '• Kenya Data Protection Act, 2019, Section 35 (POL-DPA-26): Grants the right not to be subject to a penalty based solely on automated algorithmic processing without human review.',
+    '• TAWU-Kenya Grievance Protocol, Clause 4 (POL-TAWU-01): Establishes the right to transparent dispute resolution and union escalation within the 30-day statutory window.'
+  ]
   if (caseType === 'fare_dispute') {
-    return {
-      headline: `FORMAL EARNINGS & FARE DISPUTE APPEAL — ${plat.toUpperCase()}${amounts[0] ? ` (${amounts[0]})` : ''}`,
-      policy_rules: ['POL-NTSA-13', 'POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01', platRule],
-      body: [
-        `Dear ${plat} Driver Support Team,`,
-        ``,
-        `I am writing to formally request a review of my fare/earnings dispute${tripContextClause}.`,
-        ``,
-        `Driver's Statement of Facts:`,
-        `"${narrative.trim()}"`,
-        evidenceParagraph,
-        `Statutory & Policy Grounds:`,
-        `1. NTSA Legal Notice 120 of 2022, Regulation 13(1)(b) & Regulation 15(1): Guarantees transparent fare calculation and fair administrative review of disputed driver earnings.`,
-        `2. Kenya Data Protection Act 2019 (Sections 26 & 35) & TAWU Grievance Protocol (POL-TAWU-01): Requests human review of the trip record.`,
-        ``,
-        `Respectfully submitted,`,
-        `${name}`
-      ]
-        .filter((line) => line !== '')
-        .join('\n\n')
-    }
+    statutoryLines.unshift(
+      '• NTSA Legal Notice 120 of 2022, Reg. 13(1)(b) (POL-NTSA-13): Requires accurate fare calculation and full driver remuneration for distance and time driven.'
+    )
+  } else if (caseType === 'passenger_safety') {
+    statutoryLines.unshift(
+      '• NTSA Legal Notice 120 of 2022, Reg. 18(1)-(2) (POL-NTSA-18): Protects licensed PSV drivers enforcing mandatory passenger capacity and road safety standards.'
+    )
   }
 
-  if (caseType === 'passenger_safety') {
-    return {
-      headline: `FORMAL APPEAL: SAFETY / CONDUCT REPORT — ${plat.toUpperCase()}`,
-      policy_rules: ['POL-NTSA-15', 'POL-NTSA-18', 'POL-DPA-26', 'POL-TAWU-01', platRule],
-      body: [
-        `Dear ${plat} Trust & Safety Appeals Team,`,
-        ``,
-        `I am writing to formally respond to the safety/conduct restriction on my driver account${tripContextClause}.`,
-        ``,
-        `Driver's Statement of Facts:`,
-        `"${narrative.trim()}"`,
-        evidenceParagraph,
-        `Statutory & Policy Grounds:`,
-        `1. NTSA Legal Notice 120 of 2022, Regulation 15(1) & Regulation 18(1)-(2): Protects a licensed PSV driver's right to be heard prior to deactivation and upholds driver safety rules.`,
-        `2. Kenya Data Protection Act 2019 (Section 35) & TAWU Grievance Protocol (POL-TAWU-01): Requests human review of the driver's counter-statement before any permanent action.`,
-        ``,
-        `Respectfully submitted,`,
-        `${name}`
-      ]
-        .filter((line) => line !== '')
-        .join('\n\n')
-    }
-  }
+  const headline = `FORMAL ${categoryTitle} — ${plat.toUpperCase()}${amounts[0] ? ` (${amounts[0]})` : ''}`
 
-  if (caseType === 'rating_or_cancellation') {
-    return {
-      headline: `FORMAL APPEAL: RATING / CANCELLATION REVIEW — ${plat.toUpperCase()}`,
-      policy_rules: ['POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01', platRule],
-      body: [
-        `Dear ${plat} Driver Operations Team,`,
-        ``,
-        `I am writing to formally appeal the rating or cancellation penalty placed on my account${tripContextClause}.`,
-        ``,
-        `Driver's Statement of Facts:`,
-        `"${narrative.trim()}"`,
-        evidenceParagraph,
-        `Statutory & Policy Grounds:`,
-        `1. NTSA Legal Notice 120 of 2022, Regulation 15(1): Protects drivers against unfair deactivation without due process.`,
-        `2. Kenya Data Protection Act 2019 (Section 35) & TAWU Grievance Protocol (POL-TAWU-01): Requests human review of automated rating or cancellation penalties.`,
-        ``,
-        `Respectfully submitted,`,
-        `${name}`
-      ]
-        .filter((line) => line !== '')
-        .join('\n\n')
-    }
-  }
+  const body = [
+    `DATE OF FILING: ${filingDate}`,
+    `TO: ${plat} Driver Operations, Trust & Appeals Team`,
+    `CC: Transport Workers Union of Kenya (TAWU-Kenya) Digital Transport Desk`,
+    `FROM: ${name}${phoneLine}`,
+    `SUBJECT: ${headline}`,
+    `────────────────────────────────────────────────────`,
+    `1. INCIDENT PARTICULARS`,
+    particulars.join('\n'),
+    ``,
+    `2. DRIVER'S STATEMENT OF FACTS`,
+    narrative.trim() || 'Please refer to the incident particulars above.',
+    ``,
+    `3. CORROBORATING EVIDENCE RECORD`,
+    evidenceBlock,
+    ``,
+    `4. APPLICABLE KENYAN STATUTORY & POLICY GROUNDS`,
+    statutoryLines.join('\n'),
+    ``,
+    `5. FORMAL RELIEF SOUGHT`,
+    `I formally request:`,
+    `(a) A manual human review of the trip telemetry and statement of facts above;`,
+    `(b) Immediate lifting of any unfair account restriction or reconciliation of disputed earnings; and`,
+    `(c) A written response within the statutory resolution window under NTSA Legal Notice 120.`,
+    ``,
+    `Signed,`,
+    `${name}${phoneLine}`
+  ].join('\n')
 
-  // Default / fraud_flag
   return {
-    headline: `FORMAL APPEAL: ACCOUNT / ALGORITHMIC FLAG REVIEW — ${plat.toUpperCase()}`,
-    policy_rules: ['POL-NTSA-15', 'POL-NTSA-21', 'POL-DPA-26', 'POL-TAWU-01', platRule],
-    body: [
-      `Dear ${plat} Account Integrity & Appeals Team,`,
-      ``,
-      `I am writing to formally appeal the automated flag or restriction placed on my driver account${tripContextClause}.`,
-      ``,
-      `Driver's Statement of Facts:`,
-      `"${narrative.trim()}"`,
-      evidenceParagraph,
-      `Statutory & Policy Grounds:`,
-      `1. Kenya Data Protection Act 2019 (Sections 26 & 35): Exercises the statutory right to human review of a solely automated decision.`,
-      `2. NTSA Legal Notice 120 of 2022, Regulation 15(1) & TAWU Grievance Protocol (POL-TAWU-01): Requests manual verification of account records and reinstatement.`,
-      ``,
-      `Respectfully submitted,`,
-      `${name}`
-    ]
-      .filter((line) => line !== '')
-      .join('\n\n')
+    headline,
+    body,
+    policy_rules: policyRules
   }
 }
 
@@ -643,10 +819,11 @@ export function runLocalAnalysis(params: {
   noticeText?: string
   platform: string
   driverName: string
+  driverPhone?: string
   evidenceHeld: string[]
   overrideCaseType?: string
 }): LocalAnalysisOutput {
-  const { narrative, noticeText, platform, driverName, evidenceHeld, overrideCaseType } = params
+  const { narrative, noticeText, platform, driverName, driverPhone, evidenceHeld, overrideCaseType } = params
   const { redacted, items: piiFound } = redactPii(narrative)
   const entities = extractEntities(narrative)
   const classification = classifyStory(narrative, noticeText)
@@ -657,6 +834,7 @@ export function runLocalAnalysis(params: {
     caseType: activeCaseType,
     platform,
     driverName,
+    driverPhone,
     narrative: redacted,
     entities,
     evidenceHeld

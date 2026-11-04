@@ -39,6 +39,8 @@ import {
   extractEntities,
   evaluateEvidence,
   buildAppealDossier,
+  validateKenyanPhone,
+  verifyUploadedScreenshot,
   CASE_CHECKLISTS,
   type ExtractedEntity,
   type RedactedPiiItem,
@@ -350,7 +352,7 @@ function Trust({ text = 'Evidence stays on your phone.' }: { text?: string }) {
   )
 }
 
-/* Screen 0: Splash */
+/* Screen 0: Splash (Clean, Decluttered Executive Entry) */
 function Splash({
   go,
   menu,
@@ -363,43 +365,46 @@ function Splash({
   return (
     <>
       <Header onMenu={menu} casesCount={casesCount} onOpenLog={() => go(7)} />
-      <main className="flex flex-1 flex-col justify-center gap-6 px-6 py-8">
-        <div className="flex size-20 items-center justify-center rounded-[26px] bg-[#1E5E3A] text-white shadow-lg shadow-[#1E5E3A]/20">
-          <Scale size={42} strokeWidth={1.5} />
+      <main className="flex flex-1 flex-col justify-between px-6 py-8">
+        <div className="my-auto flex flex-col gap-5">
+          <div className="flex items-center gap-3">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-[#1E5E3A] text-white shadow-md shadow-[#1E5E3A]/20">
+              <Scale size={30} strokeWidth={1.7} />
+            </div>
+            <div>
+              <span className="rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#B45309]">
+                Team Sonic · TAWU-Kenya Partner
+              </span>
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-[#0F172A]">
+                Sauti ya Dere
+              </h1>
+            </div>
+          </div>
+
+          <p className="text-sm leading-6 text-slate-600">
+            Build a structured, legally grounded appeal against unfair Uber, Bolt, Little, or Faras account restrictions under <b>NTSA Legal Notice 120</b>.
+          </p>
+
+          <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-bold text-[#1E5E3A]">
+            <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-2.5">
+              🔒 On-Device Privacy
+            </div>
+            <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-2.5">
+              ⚖️ NTSA &amp; DPA Law
+            </div>
+            <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-2.5">
+              🤝 TAWU Escalation
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">
-            For Kenya&apos;s Digital Taxi Drivers
-          </p>
-          <h1 className="text-4xl font-black tracking-tight text-[#0F172A]">
-            Sauti ya
-            <br />
-            Dere
-          </h1>
-          <p className="mt-3 max-w-[320px] text-sm leading-6 text-slate-600">
-            Turn an unfair account deactivation or fare dispute into an organised, legally grounded appeal citing{' '}
-            <b>NTSA Legal Notice 120 (2022)</b> and <b>Kenya Data Protection Act (2019)</b>.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p className="text-sm font-bold text-[#0F172A]">Built for Driver Dignity &amp; Privacy</p>
-          <p className="text-xs leading-5 text-slate-600">
-            🔒 <b>Zero Server Storage:</b> Your cases and screenshots stay inside this phone&apos;s browser.
-          </p>
-          <p className="text-xs leading-5 text-slate-600">
-            🛡️ <b>Personal-Details Filter:</b> Names, plates, phone numbers, and M-Pesa codes are automatically masked.
-          </p>
-          <p className="text-xs leading-5 text-slate-600">
-            ⚖️ <b>Honest Guidance:</b> Self-advocacy &amp; evidence tool in partnership with TAWU-Kenya (not a guarantee of reinstatement).
-          </p>
-        </div>
-        <div className="mt-auto flex flex-col gap-2.5">
+
+        <div className="flex flex-col gap-2.5 pt-4">
           <Btn onClick={() => go(1)}>
-            Start Your Appeal <ArrowRight size={18} />
+            Start New Appeal <ArrowRight size={18} />
           </Btn>
           {casesCount > 0 && (
             <Btn secondary onClick={() => go(7)}>
-              View Saved Case Log ({casesCount})
+              My Saved Cases ({casesCount})
             </Btn>
           )}
         </div>
@@ -409,7 +414,7 @@ function Splash({
   )
 }
 
-/* Screen 1: Profile (Task T25 integration) */
+/* Screen 1: Profile with Strict Kenyan Phone Number Validation */
 function Profile({
   go,
   menu,
@@ -426,6 +431,8 @@ function Profile({
   const [name, setName] = useState(profile.name || '')
   const [phone, setPhone] = useState(profile.phone || '')
   const [platform, setPlatform] = useState(profile.platform || 'Bolt')
+  const [phoneTouched, setPhoneTouched] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -434,10 +441,27 @@ function Profile({
     setPlatform(profile.platform || 'Bolt')
   }, [profile])
 
+  const phoneCheck = validateKenyanPhone(phone)
+  const showPhoneError = (phoneTouched || Boolean(submitError)) && !phoneCheck.valid
+
   const handleSubmit = async () => {
+    setPhoneTouched(true)
+    if (!name.trim()) {
+      setSubmitError('Please enter your name or initials to sign your appeal dossier.')
+      return
+    }
+    if (!phoneCheck.valid) {
+      setSubmitError(phoneCheck.error)
+      return
+    }
+    setSubmitError('')
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), phone: phone.trim(), platform })
+      await onSave({
+        name: name.trim(),
+        phone: phoneCheck.formatted,
+        platform
+      })
       go(2)
     } finally {
       setSaving(false)
@@ -447,34 +471,62 @@ function Profile({
   return (
     <>
       <Header onMenu={menu} onBack={() => go(0)} casesCount={casesCount} onOpenLog={() => go(7)} />
-      <main className="flex flex-1 flex-col gap-5 px-5 py-6">
-        <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] p-3.5 text-xs leading-5 text-[#1E5E3A]">
-          <b>Your details stay on this phone only.</b>
-          <br />
-          Saved locally in IndexedDB to sign your appeal letter and track your 30-day NTSA timeline.
-        </div>
+      <main className="flex flex-1 flex-col gap-4 px-5 py-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Driver Setup</p>
-          <h1 className="mt-1 text-2xl font-black">Your Local Profile</h1>
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Step 1 · Driver Identity</p>
+          <h1 className="mt-1 text-2xl font-black">Your Driver Profile</h1>
+          <p className="mt-1 text-xs text-slate-500">
+            Stored strictly on your phone to sign your formal appeal and enable TAWU-Kenya follow-up.
+          </p>
         </div>
-        <label className="flex flex-col gap-1.5 text-sm font-bold">
-          Driver Name or Initials (Optional)
+
+        <label className="flex flex-col gap-1.5 text-sm font-bold text-[#0F172A]">
+          Full Name or Initials *
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value)
+              if (submitError) setSubmitError('')
+            }}
             className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 font-normal outline-none focus:border-[#1E5E3A]"
-            placeholder="e.g. Mwangi K."
+            placeholder="e.g. Mercy Wanjiku"
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-bold">
-          Phone Number (Optional, for 30-day SMS reminder)
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 font-normal outline-none focus:border-[#1E5E3A]"
-            placeholder="e.g. 0712 345 678"
-          />
-        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5 text-sm font-bold text-[#0F172A]">
+            Kenyan Mobile Number (10 digits) *
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value)
+                setPhoneTouched(true)
+                if (submitError) setSubmitError('')
+              }}
+              onBlur={() => setPhoneTouched(true)}
+              className={`min-h-12 rounded-xl border bg-white px-4 font-normal outline-none ${
+                showPhoneError
+                  ? 'border-red-500 bg-red-50/40 focus:border-red-600'
+                  : phone.trim() && phoneCheck.valid
+                    ? 'border-[#1E5E3A] bg-[#F1F9F3]/40'
+                    : 'border-slate-200 focus:border-[#1E5E3A]'
+              }`}
+              placeholder="e.g. 0712 345 678 or +254 712 345 678"
+            />
+          </label>
+          {showPhoneError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+              ⚠️ {phoneCheck.error}
+            </p>
+          )}
+          {!showPhoneError && phone.trim() && phoneCheck.valid && (
+            <p className="flex items-center gap-1 text-xs font-bold text-[#1E5E3A]">
+              <Check size={14} /> Valid Kenyan mobile number ({phoneCheck.formatted})
+            </p>
+          )}
+        </div>
+
         <Select
           label="Primary Ride-Hailing Platform"
           value={platform}
@@ -486,7 +538,14 @@ function Profile({
           <option value="Faras">Faras</option>
           <option value="Yego">Yego</option>
         </Select>
-        <div className="mt-auto">
+
+        {submitError && !showPhoneError && (
+          <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+            ⚠️ {submitError}
+          </p>
+        )}
+
+        <div className="mt-auto pt-2">
           <Btn onClick={handleSubmit} disabled={saving}>
             {saving ? 'Saving...' : 'Save & Continue'} {!saving && <ArrowRight size={18} />}
           </Btn>
@@ -497,7 +556,7 @@ function Profile({
   )
 }
 
-/* Screen 2: Intake */
+/* Screen 2: Intake with Practical Screenshot Verification */
 function Intake({
   go,
   menu,
@@ -524,12 +583,26 @@ function Intake({
   casesCount: number
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [checkingImage, setCheckingImage] = useState(false)
+  const [imageError, setImageError] = useState('')
+  const [imageSuccessNote, setImageSuccessNote] = useState('')
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      onUploadNoticeFile(file.name)
+    if (!file) return
+    setCheckingImage(true)
+    setImageError('')
+    setImageSuccessNote('')
+    const check = await verifyUploadedScreenshot(file)
+    setCheckingImage(false)
+    if (!check.valid) {
+      onUploadNoticeFile('')
+      setImageError(check.reason)
+      e.target.value = ''
+      return
     }
+    setImageSuccessNote(check.reason)
+    onUploadNoticeFile(file.name)
   }
 
   return (
@@ -545,7 +618,7 @@ function Intake({
         <div>
           <h1 className="text-2xl font-black">Notice &amp; Platform Details</h1>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Select the app involved and share any suspension notice or warning message you saw.
+            Select the app involved and upload your suspension screenshot or paste the notice message.
           </p>
         </div>
         <Select
@@ -579,45 +652,61 @@ function Intake({
             value={customNoticeMessage}
             onChange={(e) => onChangeCustomNotice(e.target.value)}
             rows={2}
-            placeholder="e.g. 'Your account has been suspended due to high cancellation rate...'"
+            placeholder="e.g. 'Your account has been suspended due to...'"
             className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-xs font-normal leading-5 text-slate-700 outline-none focus:border-[#1E5E3A]"
           />
         </label>
 
-        <div className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white p-3.5">
-          <div className="pr-2">
-            <b className="text-xs text-[#0F172A]">Attach Suspension Screenshot (Optional)</b>
-            {noticeFileName ? (
-              <p className="mt-1 flex items-center gap-1 text-xs font-bold text-[#1E5E3A]">
-                <Check size={14} /> Attached: {noticeFileName}
-              </p>
-            ) : (
-              <p className="mt-0.5 text-[11px] text-slate-500">
-                Kept locally on your phone; marks Deactivation Notice as held
-              </p>
-            )}
+        <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-3.5">
+          <div className="flex items-center justify-between">
+            <div className="pr-2">
+              <b className="text-xs text-[#0F172A]">Upload App Suspension Screenshot (Optional)</b>
+              {checkingImage ? (
+                <p className="mt-1 text-xs font-bold text-amber-700">
+                  🔍 Verifying screenshot layout...
+                </p>
+              ) : noticeFileName ? (
+                <p className="mt-1 flex items-center gap-1 text-xs font-bold text-[#1E5E3A]">
+                  <Check size={14} /> {noticeFileName}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Verifies that the image is a real app screen or PDF document (not a random photo)
+                </p>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              aria-label="Upload notice"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A] hover:bg-[#D5EADB]"
+            >
+              <Upload size={18} />
+            </button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,.pdf"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <button
-            type="button"
-            aria-label="Upload notice"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A] hover:bg-[#D5EADB]"
-          >
-            <Upload size={18} />
-          </button>
+
+          {imageSuccessNote && (
+            <p className="rounded-lg bg-[#F1F9F3] px-2.5 py-1.5 text-[11px] font-bold text-[#1E5E3A]">
+              ✓ {imageSuccessNote}
+            </p>
+          )}
+          {imageError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold leading-4 text-red-700">
+              ⚠️ {imageError}
+            </p>
+          )}
         </div>
 
-        <Trust />
-        <div className="mt-auto">
+        <div className="mt-auto pt-2">
           <Btn onClick={() => go(3)}>
-            Continue to Your Story <ArrowRight size={18} />
+            Continue to Tell Your Story <ArrowRight size={18} />
           </Btn>
         </div>
       </main>
@@ -965,11 +1054,25 @@ function Chat({
     }
   }
 
-  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      onAttachEvidenceFile(file.name)
+    if (!file) return
+    setVoiceMessage('🔍 Verifying uploaded screenshot...')
+    const check = await verifyUploadedScreenshot(file)
+    if (!check.valid) {
+      setVoiceMessage(`⚠️ ${check.reason}`)
+      e.target.value = ''
+      return
     }
+    setVoiceMessage(`✓ ${check.reason}`)
+    setTimeout(() => setVoiceMessage(''), 4000)
+    onAttachEvidenceFile(file.name)
+  }
+
+  const handleResetChat = () => {
+    onChangeNarrative('')
+    setDraft('')
+    setMessages([{ id: `bot-reset-${Date.now()}`, sender: 'bot', text: greetingText }])
   }
 
   const review = async () => {
@@ -986,25 +1089,6 @@ function Chat({
     }
   }
 
-  // Contextual quick-reply chips based on conversation stage
-  const currentQuickChips = (() => {
-    if (driverMessages.length === 0) {
-      return [
-        'On Friday around 8:30pm from Westlands to Syokimau...',
-        'Jana usiku pale CBD to Kilimani rider alikataa kulipa...',
-        'My account was suddenly blocked after a trip from JKIA...'
-      ]
-    }
-    if (!hasDateOrTime || !hasLocation) {
-      return [
-        'It happened yesterday around 7:45pm from Westlands to Kilimani.',
-        'On Friday 9 October at 2:15pm from JKIA to Upper Hill.',
-        'Juzi saa mbili usiku from CBD to Kasarani.'
-      ]
-    }
-    return getCaseSpecificFollowUp(noticeText, combinedNarrative).chips
-  })()
-
   return (
     <>
       <Header
@@ -1015,7 +1099,7 @@ function Chat({
         onOpenLog={() => go(7)}
       />
       <main className="flex flex-1 flex-col px-5 py-3">
-        {/* Top Bot Identity & Live Fact Completeness Bar */}
+        {/* Top Bot Identity & Clear Chat Action */}
         <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <div className="relative flex size-7 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A]">
@@ -1023,18 +1107,24 @@ function Chat({
               <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-emerald-500 ring-1 ring-white" />
             </div>
             <div>
-              <span className="font-bold text-slate-800">DereBot Legal Assistant</span>
-              <span className="ml-1.5 text-[10px] font-semibold text-emerald-700">• Online</span>
+              <span className="font-bold text-slate-800">DereBot Intake Assistant</span>
+              <span className="ml-1.5 text-[10px] font-semibold text-emerald-700">• Write your own story</span>
             </div>
           </div>
-          <span className="flex items-center gap-1 rounded-full bg-[#E9F3ED] px-2 py-0.5 text-[10px] font-bold text-[#1E5E3A]">
-            <ShieldCheck size={11} /> PII Redacted
-          </span>
+          {driverMessages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleResetChat}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100"
+            >
+              Clear &amp; Start Fresh
+            </button>
+          )}
         </div>
 
         {/* Live Fact Extraction Pills */}
         <div className="mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl bg-[#EEF2F4] px-2.5 py-1.5 text-[10px]">
-          <span className="font-extrabold text-slate-600">Facts caught:</span>
+          <span className="font-extrabold text-slate-600">Your Details Recorded:</span>
           <span
             className={`rounded-full px-2 py-0.5 font-bold ${
               hasDateOrTime ? 'bg-[#D8F0DE] text-[#1E5E3A]' : 'bg-white text-slate-500'
@@ -1047,40 +1137,19 @@ function Chat({
               hasLocation ? 'bg-[#D8F0DE] text-[#1E5E3A]' : 'bg-white text-slate-500'
             }`}
           >
-            {hasLocation ? '✓' : '○'} Nairobi Route
+            {hasLocation ? '✓' : '○'} Location / Route
           </span>
           <span
             className={`rounded-full px-2 py-0.5 font-bold ${
               hasIssueDetail ? 'bg-[#D8F0DE] text-[#1E5E3A]' : 'bg-white text-slate-500'
             }`}
           >
-            {hasIssueDetail ? '✓' : '○'} Dispute Details
+            {hasIssueDetail ? '✓' : '○'} Incident Statement
           </span>
         </div>
 
-        {/* 1-Tap Demo Scenarios */}
-        <div className="mb-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-              Load 1-Tap Demo Chat:
-            </span>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {SAMPLE_STORIES.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => handleLoadSampleConversation(s)}
-                className="rounded-lg border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-0.5 text-[10px] font-bold text-[#1E5E3A] hover:bg-[#D8F0DE]"
-              >
-                + {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Conversational Message Thread */}
-        <div className="mb-2.5 flex max-h-[270px] min-h-[195px] flex-1 flex-col gap-2.5 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
+        {/* Conversational Message Thread (100% Driver's Own Words) */}
+        <div className="mb-2.5 flex max-h-[320px] min-h-[235px] flex-1 flex-col gap-2.5 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
           {messages.map((msg) => {
             if (msg.sender === 'bot') {
               return (
@@ -1158,20 +1227,6 @@ function Chat({
             </div>
           )}
           <div ref={chatEndRef} />
-        </div>
-
-        {/* Contextual Quick Reply Suggestions */}
-        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
-          {currentQuickChips.map((chip, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleSendMessage(chip)}
-              className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:border-[#1E5E3A] hover:bg-[#F1F9F3] hover:text-[#1E5E3A]"
-            >
-              💬 &ldquo;{chip.length > 48 ? `${chip.slice(0, 48)}...` : chip}&rdquo;
-            </button>
-          ))}
         </div>
 
         {attachedFiles.length > 0 && (
@@ -1597,14 +1652,25 @@ function Evidence({
   const readinessLabel =
     readiness >= 0.8 ? 'Strong Dossier' : readiness >= 0.5 ? 'Moderate' : 'Needs Evidence'
 
+  const [evidenceImageError, setEvidenceImageError] = useState('')
+
   const handleAttachClick = (itemId: string) => {
+    setEvidenceImageError('')
     setPendingItemId(itemId)
     fileInputRef.current?.click()
   }
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file && pendingItemId) {
+      const check = await verifyUploadedScreenshot(file)
+      if (!check.valid) {
+        setEvidenceImageError(check.reason)
+        setPendingItemId(null)
+        e.target.value = ''
+        return
+      }
+      setEvidenceImageError('')
       setAttachedFileNames((prev) => ({ ...prev, [pendingItemId]: file.name }))
       if (!evidenceHeld.includes(pendingItemId)) {
         onToggleEvidence(pendingItemId)
@@ -1654,6 +1720,12 @@ function Evidence({
           onChange={handleFileSelected}
           className="hidden"
         />
+
+        {evidenceImageError && (
+          <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold leading-5 text-red-700">
+            ⚠️ {evidenceImageError}
+          </p>
+        )}
 
         <div className="flex flex-col gap-2.5">
           {checklist.map((item) => {
@@ -1758,7 +1830,8 @@ function Preview({
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [pdfSuccess, setPdfSuccess] = useState(false)
   const [isEditingAppeal, setIsEditingAppeal] = useState(false)
-  const [showTawuShare, setShowTawuShare] = useState(false)
+  const [tawuPhone, setTawuPhone] = useState('+254 712 345 678')
+  const [tawuEmail, setTawuEmail] = useState('info@tawu.or.ke')
 
   const headline =
     analysis.appeal.headline ||
@@ -1813,12 +1886,13 @@ function Preview({
     }
   }
 
-  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(
-    `*Sauti ya Dere — TAWU Driver Appeal Dossier*\n\n*${headline}*\n\n${bodyText}`
+  const cleanTawuDigits = tawuPhone.replace(/\D/g, '').replace(/^0/, '254')
+  const whatsappShareUrl = `https://wa.me/${cleanTawuDigits}?text=${encodeURIComponent(
+    `*TAWU-KENYA DIGITAL DRIVER GRIEVANCE REPORT*\n*Submitted via Sauti ya Dere*\n\n${bodyText}`
   )}`
 
-  const mailtoShareUrl = `mailto:sautiyadere@gmail.com?subject=${encodeURIComponent(
-    headline
+  const mailtoShareUrl = `mailto:${encodeURIComponent(tawuEmail.trim() || 'info@tawu.or.ke')}?subject=${encodeURIComponent(
+    `[TAWU Driver Appeal] ${headline}`
   )}&body=${encodeURIComponent(bodyText)}`
 
   return (
@@ -1834,16 +1908,16 @@ function Preview({
         <div className="flex items-end justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">
-              Step 5 · Legal Appeal Dossier
+              Step 5 · Structured Legal Dossier
             </p>
-            <h1 className="mt-1 text-2xl font-black">Ready to Submit</h1>
+            <h1 className="mt-1 text-2xl font-black">Formal Appeal &amp; TAWU Report</h1>
           </div>
           <button
             type="button"
             onClick={() => setIsEditingAppeal(!isEditingAppeal)}
             className="flex items-center gap-1 rounded-lg bg-[#E9F3ED] px-2.5 py-1 text-xs font-extrabold text-[#1E5E3A]"
           >
-            <Edit2 size={12} /> {isEditingAppeal ? 'Done Editing' : 'Edit Wording'}
+            <Edit2 size={12} /> {isEditingAppeal ? 'Done Editing' : 'Edit Dossier'}
           </button>
         </div>
 
@@ -1859,32 +1933,36 @@ function Preview({
           ))}
         </div>
 
-        <article className="flex-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3">
+        {/* Structured 5-Section Formal Legal Dossier */}
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2.5">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">ADDRESSED TO</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#1E5E3A]">
+                OFFICIAL DRIVER GRIEVANCE &amp; REINSTATEMENT DOSSIER
+              </p>
               <b className="text-xs text-[#0F172A]">
-                {platform} Driver Support &amp; TAWU-Kenya Escalation Desk
+                {platform} Appeals Desk &amp; TAWU-Kenya Union Escalation
               </b>
             </div>
             <FileText className="text-[#1E5E3A]" size={18} />
           </div>
-          <h3 className="mb-2 text-xs font-extrabold text-[#0F172A]">{headline}</h3>
           {isEditingAppeal ? (
             <textarea
               value={bodyText}
               onChange={(e) => onUpdateAppealBody(e.target.value)}
-              rows={11}
-              className="w-full rounded-xl border border-[#1E5E3A] bg-slate-50 p-3 text-xs leading-5 text-slate-800 outline-none"
+              rows={13}
+              className="w-full rounded-xl border border-[#1E5E3A] bg-slate-50 p-3 font-mono text-[11px] leading-5 text-slate-800 outline-none"
             />
           ) : (
-            <p className="whitespace-pre-line text-xs leading-5 text-slate-700">{bodyText}</p>
+            <div className="max-h-[300px] overflow-y-auto pr-1 font-mono text-[11px] leading-5 whitespace-pre-line text-slate-800">
+              {bodyText}
+            </div>
           )}
         </article>
 
         <div className="grid grid-cols-2 gap-2.5">
           <Btn secondary onClick={handleCopy}>
-            <Clipboard size={16} /> {copied ? 'Copied to Clipboard!' : 'Copy Appeal Text'}
+            <Clipboard size={16} /> {copied ? 'Copied!' : 'Copy Appeal Text'}
           </Btn>
           <Btn secondary onClick={handleDownloadPdf} disabled={generatingPdf}>
             <Download size={16} />{' '}
@@ -1892,33 +1970,59 @@ function Preview({
           </Btn>
         </div>
 
-        <Btn secondary onClick={() => setShowTawuShare(!showTawuShare)}>
-          <Share2 size={16} /> Share / Escalate to TAWU-Kenya
-        </Btn>
-
-        {showTawuShare && (
-          <div className="flex flex-col gap-2 rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-3.5 text-xs">
-            <p className="font-bold text-[#0F172A]">
-              Send your appeal dossier and downloaded PDF to TAWU-Kenya or platform support:
-            </p>
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <a
-                href={whatsappShareUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex min-h-10 items-center justify-center rounded-xl bg-[#1E5E3A] px-3 font-extrabold text-white"
-              >
-                Share on WhatsApp
-              </a>
-              <a
-                href={mailtoShareUrl}
-                className="flex min-h-10 items-center justify-center rounded-xl border border-[#1E5E3A] bg-white px-3 font-extrabold text-[#1E5E3A]"
-              >
-                Send via Email
-              </a>
+        {/* Dedicated TAWU-Kenya Union Contact & Direct Escalation Card */}
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-4 text-xs">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#1E5E3A]">
+                UNION ESCALATION DESK
+              </p>
+              <b className="text-sm text-[#0F172A]">
+                Send Report to TAWU-Kenya (Transport Workers Union)
+              </b>
             </div>
+            <Phone className="text-[#1E5E3A]" size={18} />
           </div>
-        )}
+          <p className="text-[11px] leading-4 text-slate-600">
+            Send your structured dossier directly to the TAWU-Kenya Digital Transport Desk or enter your union representative&apos;s contact below:
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-700">
+              TAWU WhatsApp Desk Number
+              <input
+                type="tel"
+                value={tawuPhone}
+                onChange={(e) => setTawuPhone(e.target.value)}
+                className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-normal text-slate-900 outline-none focus:border-[#1E5E3A]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-700">
+              TAWU Escalation Email
+              <input
+                type="email"
+                value={tawuEmail}
+                onChange={(e) => setTawuEmail(e.target.value)}
+                className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-normal text-slate-900 outline-none focus:border-[#1E5E3A]"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <a
+              href={whatsappShareUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-[#1E5E3A] px-3 text-center text-xs font-extrabold text-white hover:bg-[#174A2E]"
+            >
+              📲 Send to TAWU WhatsApp
+            </a>
+            <a
+              href={mailtoShareUrl}
+              className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-[#1E5E3A] bg-white px-3 text-center text-xs font-extrabold text-[#1E5E3A] hover:bg-emerald-50"
+            >
+              ✉️ Email to TAWU Desk
+            </a>
+          </div>
+        </div>
 
         <Btn onClick={handleFinalSave} disabled={submitting}>
           {submitting ? 'Saving to Device...' : 'Save to Case Log & Start 30-Day Timer'}
@@ -2365,6 +2469,7 @@ export default function Page() {
       noticeText: fullNotice,
       platform: casePlatform || 'Bolt',
       driverName: profile.name,
+      driverPhone: profile.phone,
       evidenceHeld
     })
 
@@ -2408,6 +2513,7 @@ export default function Page() {
           caseType: mergedCaseType,
           platform: casePlatform || 'Bolt',
           driverName: profile.name,
+          driverPhone: profile.phone,
           narrative: resData.redacted_narrative || localResult.redacted_narrative,
           entities: mergedEntities,
           evidenceHeld
@@ -2448,6 +2554,7 @@ export default function Page() {
       caseType: nextCaseType,
       platform: casePlatform || 'Bolt',
       driverName: profile.name,
+      driverPhone: profile.phone,
       narrative: analysis.redacted_narrative || narrative,
       entities: nextEntities as ExtractedEntity[],
       evidenceHeld: nextHeld
