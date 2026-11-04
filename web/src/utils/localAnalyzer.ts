@@ -281,8 +281,8 @@ export function validateKenyanPhone(raw: string): {
 }
 
 /**
- * Inspect an uploaded image/file to verify it looks like an app screenshot or PDF document
- * rather than a random camera photograph (e.g., a person holding an award or a portrait).
+ * Inspect an uploaded image/file to verify it is a genuine digital app screenshot or PDF document
+ * rather than a photograph of a person, cup, award, or real-world scene.
  */
 export async function verifyUploadedScreenshot(file: File): Promise<{
   valid: boolean
@@ -290,7 +290,7 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
 }> {
   const lowerName = file.name.toLowerCase()
 
-  // PDFs are valid official documents (e.g., M-Pesa statement or Police Abstract PDF)
+  // 1. PDFs are valid official documents
   if (file.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
     return {
       valid: true,
@@ -305,16 +305,21 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
     }
   }
 
-  // Check obvious non-screenshot photo keywords in filename
-  if (/\b(award|trophy|selfie|portrait|person|wedding|party|vacation|dsc_|pxl_|img_\d{4})\b/i.test(lowerName)) {
+  // 2. Reject camera/photo filenames (e.g. WhatsApp photos, camera roll IMG_/DSC_/PXL_, portraits, objects)
+  if (
+    /\b(award|trophy|cup|mug|person|people|selfie|portrait|photo|wedding|party|dsc_|pxl_|img_\d{4}|whatsapp\s+image|camera)\b/i.test(
+      lowerName
+    ) &&
+    !lowerName.includes('screenshot')
+  ) {
     return {
       valid: false,
       reason:
-        'This file appears to be a camera photograph rather than an app screenshot. Please upload a screenshot of your suspension notice, trip receipt, or M-Pesa message.'
+        'This file appears to be a camera photograph rather than an app screenshot. Please upload an actual screenshot of your suspension notice, trip receipt, or payment record.'
     }
   }
 
-  // Analyze actual image pixels & aspect ratio on an offscreen canvas
+  // 3. Strict Pixel-Level Digital UI vs. Real-World Photograph Analysis
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
@@ -325,76 +330,101 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
 
       try {
         const canvas = document.createElement('canvas')
-        const sampleSize = 100
-        canvas.width = sampleSize
-        canvas.height = sampleSize
+        const sampleW = 120
+        const sampleH = 120
+        canvas.width = sampleW
+        canvas.height = sampleH
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          resolve({ valid: true, reason: `Image attached (${width}×${height}px).` })
+          resolve({ valid: true, reason: `Screenshot attached (${width}×${height}px).` })
           return
         }
-        ctx.drawImage(img, 0, 0, sampleSize, sampleSize)
-        const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data
+        ctx.drawImage(img, 0, 0, sampleW, sampleH)
+        const data = ctx.getImageData(0, 0, sampleW, sampleH).data
 
-        let flatUiPixels = 0
-        let skinLikePixels = 0
-        let sharpTextTransitions = 0
-        const totalPixels = sampleSize * sampleSize
+        const totalPixels = sampleW * sampleH
+        let exactDigitalUiPairs = 0
+        let naturalColorPixels = 0
+        let skinOrWarmPixels = 0
+        let uniformScanlines = 0
 
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i]
-          const g = data[i + 1]
-          const b = data[i + 2]
+        for (let y = 0; y < sampleH; y++) {
+          let rowIdenticalUiPixels = 0
+          for (let x = 0; x < sampleW; x++) {
+            const idx = (y * sampleW + x) * 4
+            const r = data[idx]
+            const g = data[idx + 1]
+            const b = data[idx + 2]
 
-          // App UI backgrounds are predominantly near-white, light slate, or uniform dark-mode gray/black
-          const isNearWhite = r > 235 && g > 235 && b > 235
-          const isLightSlate =
-            r > 215 && g > 215 && b > 215 && Math.abs(r - g) <= 10 && Math.abs(g - b) <= 10
-          const isDarkUi =
-            r < 42 && g < 45 && b < 52 && Math.abs(r - g) <= 10 && Math.abs(g - b) <= 12
+            const maxC = Math.max(r, g, b)
+            const minC = Math.min(r, g, b)
+            const saturation = maxC - minC
 
-          if (isNearWhite || isLightSlate || isDarkUi) {
-            flatUiPixels += 1
-          }
-
-          // Detect warm natural camera/skin/wood tones common in portraits/award photos
-          if (r > 95 && g > 40 && b > 20 && r > g + 15 && g > b && r - b > 30) {
-            skinLikePixels += 1
-          }
-
-          // Detect sharp horizontal luminance jumps typical of UI text on flat backgrounds
-          if (i >= 4) {
-            const prevLum = (data[i - 4] + data[i - 3] + data[i - 2]) / 3
-            const currLum = (r + g + b) / 3
-            if (Math.abs(currLum - prevLum) > 95) {
-              sharpTextTransitions += 1
+            // Real-world photos (people, skin, cups, clothes, rooms, outdoors) have mid-tone color saturation
+            if (saturation > 18 && maxC < 245 && minC > 15) {
+              naturalColorPixels += 1
             }
+
+            // Skin tones & warm indoor lighting common in photos of people holding objects/cups/awards
+            if (r > 85 && g > 35 && b > 15 && r > g + 12 && g >= b && r - b > 24) {
+              skinOrWarmPixels += 1
+            }
+
+            // Digital app UIs consist of flat neutral surfaces (pure white, light gray, or dark mode)
+            // where adjacent horizontal pixels are digitally identical (zero camera sensor gradient)
+            const isNeutralUi =
+              (r > 238 && g > 238 && b > 238 && saturation <= 6) ||
+              (r > 218 && g > 218 && b > 218 && saturation <= 8) ||
+              (r < 40 && g < 44 && b < 50 && saturation <= 10)
+
+            if (x > 0) {
+              const prevIdx = idx - 4
+              const dr = Math.abs(r - data[prevIdx])
+              const dg = Math.abs(g - data[prevIdx + 1])
+              const db = Math.abs(b - data[prevIdx + 2])
+              if (isNeutralUi && dr <= 2 && dg <= 2 && db <= 2) {
+                exactDigitalUiPairs += 1
+                rowIdenticalUiPixels += 1
+              }
+            }
+          }
+          if (rowIdenticalUiPixels >= sampleW * 0.55) {
+            uniformScanlines += 1
           }
         }
 
-        const flatUiRatio = flatUiPixels / totalPixels
-        const skinRatio = skinLikePixels / totalPixels
-        const isLandscapePhoto = width > height * 1.15
+        const digitalPairRatio = exactDigitalUiPairs / totalPixels
+        const naturalColorRatio = naturalColorPixels / totalPixels
+        const skinRatio = skinOrWarmPixels / totalPixels
+        const scanlineRatio = uniformScanlines / sampleH
+        const aspect = height / Math.max(1, width)
 
-        // Camera photos of people/awards/outdoors have low flat UI background (< 0.26)
-        // or high skin/natural tones, whereas app screenshots have flat UI cards + text
+        // A genuine app screenshot has:
+        // - High digital flat scanlines (scanlineRatio >= 0.42 and digitalPairRatio >= 0.45)
+        // - Very low skin/portrait pixels (skinRatio < 0.06)
+        // - Low natural photo color variance (naturalColorRatio < 0.22)
+        // - Usually portrait mobile screen aspect ratio (aspect >= 1.35) unless a cropped receipt banner with >65% flat UI
+        const isPortraitPhoneScreen = aspect >= 1.35
+        const isCroppedReceipt = !isPortraitPhoneScreen && digitalPairRatio >= 0.65 && skinRatio < 0.03
+
         if (
-          flatUiRatio < 0.26 ||
-          (skinRatio > 0.14 && flatUiRatio < 0.45) ||
-          (isLandscapePhoto && flatUiRatio < 0.45) ||
-          sharpTextTransitions < 80
+          skinRatio >= 0.055 ||
+          naturalColorRatio >= 0.22 ||
+          digitalPairRatio < 0.45 ||
+          scanlineRatio < 0.40 ||
+          (!isPortraitPhoneScreen && !isCroppedReceipt)
         ) {
           resolve({
             valid: false,
             reason:
-              'Image rejected: Our visual check detected a camera photo/portrait rather than a platform app screen or receipt. Please upload an actual screenshot of your Uber/Bolt/Little notice, trip receipt, or M-Pesa statement.'
+              'Invalid image: This looks like a photograph of a person, object, or scene rather than an app screenshot. Please upload a real screenshot of your Uber/Bolt/Little suspension notice, trip receipt, or M-Pesa message.'
           })
           return
         }
 
         resolve({
           valid: true,
-          reason: `Verified app screenshot layout (${width}×${height}px, ${Math.round(flatUiRatio * 100)}% UI surface).`
+          reason: `Verified digital app screenshot (${width}×${height}px).`
         })
       } catch {
         resolve({ valid: true, reason: `Screenshot attached (${width}×${height}px).` })
@@ -409,6 +439,32 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
     }
     img.src = url
   })
+}
+
+/**
+ * Validate a pasted suspension notice / SMS on Screen 2
+ */
+export function validateSuspensionNotice(text: string): {
+  valid: boolean
+  warning: string
+} {
+  const trimmed = (text || '').trim()
+  if (!trimmed) return { valid: true, warning: '' }
+
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  const hasNoticeKeywords =
+    /\b(account|suspended|suspension|deactivated|blocked|restricted|hold|rating|cancellation|fare|payment|safety|report|violation|flagged|trip|uber|bolt|little|faras|driver|support|appeal|warning|notice)\b/i.test(
+      trimmed
+    )
+
+  if (words.length < 4 || !hasNoticeKeywords) {
+    return {
+      valid: false,
+      warning:
+        'This text does not look like a platform suspension message. Paste the actual notice from Bolt, Uber, Little, or Faras (e.g., "Your driver account has been restricted due to..."), or leave it blank if you did not receive one.'
+    }
+  }
+  return { valid: true, warning: '' }
 }
 
 /**
@@ -776,32 +832,36 @@ export function buildAppealDossier(params: {
   const headline = `FORMAL ${categoryTitle} — ${plat.toUpperCase()}${amounts[0] ? ` (${amounts[0]})` : ''}`
 
   const body = [
-    `DATE OF FILING: ${filingDate}`,
-    `TO: ${plat} Driver Operations, Trust & Appeals Team`,
-    `CC: Transport Workers Union of Kenya (TAWU-Kenya) Digital Transport Desk`,
+    `DATE: ${filingDate}`,
+    `TO: ${plat} Driver Support & Appeals Review Team`,
     `FROM: ${name}${phoneLine}`,
-    `SUBJECT: ${headline}`,
+    `RE: ${headline}`,
     `────────────────────────────────────────────────────`,
-    `1. INCIDENT PARTICULARS`,
+    `Dear ${plat} Appeals Team,`,
+    ``,
+    `I am writing to formally appeal the restriction / action on my ${plat} driver account and request a manual review of the details below.`,
+    ``,
+    `1. TRIP & INCIDENT DETAILS`,
     particulars.join('\n'),
     ``,
-    `2. DRIVER'S STATEMENT OF FACTS`,
-    narrative.trim() || 'Please refer to the incident particulars above.',
+    `2. DRIVER'S STATEMENT OF WHAT HAPPENED`,
+    narrative.trim() || 'Please refer to the trip and incident details above.',
     ``,
-    `3. CORROBORATING EVIDENCE RECORD`,
+    `3. SUPPORTING EVIDENCE AVAILABLE`,
     evidenceBlock,
     ``,
-    `4. APPLICABLE KENYAN STATUTORY & POLICY GROUNDS`,
+    `4. STATUTORY & POLICY BASIS FOR REVIEW`,
     statutoryLines.join('\n'),
     ``,
-    `5. FORMAL RELIEF SOUGHT`,
-    `I formally request:`,
-    `(a) A manual human review of the trip telemetry and statement of facts above;`,
-    `(b) Immediate lifting of any unfair account restriction or reconciliation of disputed earnings; and`,
-    `(c) A written response within the statutory resolution window under NTSA Legal Notice 120.`,
+    `5. REQUESTED RESOLUTION`,
+    `Based on the facts and evidence above, I respectfully request:`,
+    `• A human review of my trip logs, GPS telemetry, and account record;`,
+    `• Reinstatement of my ${plat} driver account / adjustment of the disputed fare; and`,
+    `• Written feedback on the outcome of this review.`,
     ``,
-    `Signed,`,
-    `${name}${phoneLine}`
+    `Sincerely,`,
+    `${name}${phoneLine}`,
+    `${plat} Driver Partner`
   ].join('\n')
 
   return {

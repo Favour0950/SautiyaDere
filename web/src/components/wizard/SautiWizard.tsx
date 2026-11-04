@@ -41,6 +41,7 @@ import {
   buildAppealDossier,
   validateKenyanPhone,
   verifyUploadedScreenshot,
+  validateSuspensionNotice,
   CASE_CHECKLISTS,
   type ExtractedEntity,
   type RedactedPiiItem,
@@ -276,8 +277,8 @@ function Header({
 
 function Footer() {
   return (
-    <footer className="border-t border-slate-200 px-5 py-4 text-center text-[10px] leading-4 text-slate-400">
-      © 2026 Sauti ya Dere · In partnership with TAWU-Kenya · Stored Locally on Device · No Guarantee of Reinstatement
+    <footer className="border-t border-slate-200 px-5 py-3.5 text-center text-[10px] leading-4 text-slate-400">
+      © 2026 Sauti ya Dere · For Bolt, Uber, Little &amp; Faras Drivers · Stored Locally on Device · No Guarantee of Reinstatement
     </footer>
   )
 }
@@ -352,7 +353,7 @@ function Trust({ text = 'Evidence stays on your phone.' }: { text?: string }) {
   )
 }
 
-/* Screen 0: Splash (Clean, Decluttered Executive Entry) */
+/* Screen 0: Splash (Clean, Platform-Focused Landing Page) */
 function Splash({
   go,
   menu,
@@ -365,46 +366,69 @@ function Splash({
   return (
     <>
       <Header onMenu={menu} casesCount={casesCount} onOpenLog={() => go(7)} />
-      <main className="flex flex-1 flex-col justify-between px-6 py-8">
-        <div className="my-auto flex flex-col gap-5">
-          <div className="flex items-center gap-3">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-[#1E5E3A] text-white shadow-md shadow-[#1E5E3A]/20">
-              <Scale size={30} strokeWidth={1.7} />
-            </div>
-            <div>
-              <span className="rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#B45309]">
-                Team Sonic · TAWU-Kenya Partner
+      <main className="flex flex-1 flex-col justify-between px-6 py-6">
+        <div className="flex flex-col gap-5">
+          {/* Supported Ride-Hailing Platforms Bar */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {['Bolt', 'Uber', 'Little Cab', 'Faras'].map((plat) => (
+              <span
+                key={plat}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-extrabold text-slate-700 shadow-2xs"
+              >
+                🚗 {plat}
               </span>
-              <h1 className="mt-1 text-3xl font-black tracking-tight text-[#0F172A]">
-                Sauti ya Dere
-              </h1>
-            </div>
+            ))}
           </div>
 
-          <p className="text-sm leading-6 text-slate-600">
-            Build a structured, legally grounded appeal against unfair Uber, Bolt, Little, or Faras account restrictions under <b>NTSA Legal Notice 120</b>.
-          </p>
+          {/* Main Hero */}
+          <div>
+            <h1 className="text-3xl font-black leading-tight tracking-tight text-[#0F172A]">
+              Appeal Unfair Driver Suspensions &amp; Fare Disputes
+            </h1>
+            <p className="mt-2.5 text-xs leading-5 text-slate-600">
+              Organise your trip facts, check required evidence, and generate a formal appeal letter for <b>Bolt, Uber, Little Cab, or Faras Support</b> backed by Kenyan transport regulations.
+            </p>
+          </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-bold text-[#1E5E3A]">
-            <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-2.5">
-              🔒 On-Device Privacy
+          {/* Clean 3-Step How It Works */}
+          <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#1E5E3A]">
+              How It Works in 3 Steps
+            </p>
+            <div className="flex items-start gap-3">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-xs font-black text-[#1E5E3A]">
+                1
+              </span>
+              <p className="text-xs leading-4 text-slate-700">
+                <b>Select Your App &amp; Notice:</b> Choose your ride-hailing platform and the suspension or fare issue.
+              </p>
             </div>
-            <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-2.5">
-              ⚖️ NTSA &amp; DPA Law
+            <div className="flex items-start gap-3">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-xs font-black text-[#1E5E3A]">
+                2
+              </span>
+              <p className="text-xs leading-4 text-slate-700">
+                <b>Chat &amp; Verify Trip Facts:</b> Explain what happened in your own words and tick the evidence you hold.
+              </p>
             </div>
-            <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-2 py-2.5">
-              🤝 TAWU Escalation
+            <div className="flex items-start gap-3">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-xs font-black text-[#1E5E3A]">
+                3
+              </span>
+              <p className="text-xs leading-4 text-slate-700">
+                <b>Download &amp; Submit Appeal:</b> Export a 1-page PDF or send directly to your platform&apos;s support team.
+              </p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-2.5 pt-4">
           <Btn onClick={() => go(1)}>
-            Start New Appeal <ArrowRight size={18} />
+            Start Your Appeal <ArrowRight size={18} />
           </Btn>
           {casesCount > 0 && (
             <Btn secondary onClick={() => go(7)}>
-              My Saved Cases ({casesCount})
+              My Saved Appeals ({casesCount})
             </Btn>
           )}
         </div>
@@ -605,6 +629,15 @@ function Intake({
     onUploadNoticeFile(file.name)
   }
 
+  const noticeValidation = validateSuspensionNotice(customNoticeMessage)
+
+  const handleContinueFromIntake = () => {
+    if (customNoticeMessage.trim() && !noticeValidation.valid) {
+      return
+    }
+    go(3)
+  }
+
   return (
     <>
       <Header
@@ -618,7 +651,7 @@ function Intake({
         <div>
           <h1 className="text-2xl font-black">Notice &amp; Platform Details</h1>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Select the app involved and upload your suspension screenshot or paste the notice message.
+            Select your platform and share the suspension notice or warning message you received in the {platform} app.
           </p>
         </div>
         <Select
@@ -646,21 +679,37 @@ function Intake({
           </option>
         </Select>
 
-        <label className="flex flex-col gap-1.5 text-sm font-bold text-[#0F172A]">
-          Paste Suspension Message / SMS (Optional)
-          <textarea
-            value={customNoticeMessage}
-            onChange={(e) => onChangeCustomNotice(e.target.value)}
-            rows={2}
-            placeholder="e.g. 'Your account has been suspended due to...'"
-            className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-xs font-normal leading-5 text-slate-700 outline-none focus:border-[#1E5E3A]"
-          />
-        </label>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5 text-sm font-bold text-[#0F172A]">
+            Paste {platform} Suspension Message / SMS (Optional)
+            <textarea
+              value={customNoticeMessage}
+              onChange={(e) => onChangeCustomNotice(e.target.value)}
+              rows={2}
+              placeholder={`e.g. "Your ${platform} driver account has been restricted due to..."`}
+              className={`w-full resize-none rounded-xl border bg-white p-3 text-xs font-normal leading-5 text-slate-700 outline-none ${
+                customNoticeMessage.trim() && !noticeValidation.valid
+                  ? 'border-red-500 bg-red-50/30'
+                  : 'border-slate-200 focus:border-[#1E5E3A]'
+              }`}
+            />
+          </label>
+          {customNoticeMessage.trim() && !noticeValidation.valid && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold leading-4 text-red-700">
+              ⚠️ {noticeValidation.warning}
+            </p>
+          )}
+          {customNoticeMessage.trim() && noticeValidation.valid && (
+            <p className="flex items-center gap-1 text-[11px] font-bold text-[#1E5E3A]">
+              <Check size={13} /> Valid {platform} notice text recorded.
+            </p>
+          )}
+        </div>
 
         <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-3.5">
           <div className="flex items-center justify-between">
             <div className="pr-2">
-              <b className="text-xs text-[#0F172A]">Upload App Suspension Screenshot (Optional)</b>
+              <b className="text-xs text-[#0F172A]">Upload {platform} Suspension Screenshot (Optional)</b>
               {checkingImage ? (
                 <p className="mt-1 text-xs font-bold text-amber-700">
                   🔍 Verifying screenshot layout...
@@ -671,7 +720,7 @@ function Intake({
                 </p>
               ) : (
                 <p className="mt-0.5 text-[11px] text-slate-500">
-                  Verifies that the image is a real app screen or PDF document (not a random photo)
+                  Only real app screenshots or PDF documents are accepted (camera photos of people/objects are rejected)
                 </p>
               )}
             </div>
@@ -705,8 +754,11 @@ function Intake({
         </div>
 
         <div className="mt-auto pt-2">
-          <Btn onClick={() => go(3)}>
-            Continue to Tell Your Story <ArrowRight size={18} />
+          <Btn
+            onClick={handleContinueFromIntake}
+            disabled={Boolean(customNoticeMessage.trim() && !noticeValidation.valid)}
+          >
+            Continue to Chat <ArrowRight size={18} />
           </Btn>
         </div>
       </main>
@@ -821,7 +873,8 @@ function Chat({
   onAttachEvidenceFile: (fileName: string) => void
   casesCount: number
 }) {
-  const greetingText = `Habari ${driverName ? driverName.split(' ')[0] : 'Dere'}! 👋 I see you are appealing a ${platform} "${noticeText}" issue. You can chat with me in English, Kiswahili, or Sheng.\n\nFirst: In your own words, what happened on that trip or before your account was affected?`
+  const firstName = driverName ? driverName.split(' ')[0] : 'there'
+  const greetingText = `Hi ${firstName}! I'm here to help you put together your ${platform} appeal. Whenever you're ready, tell me what happened.`
 
   const [messages, setMessages] = useState<ChatBubble[]>(() => {
     const initial: ChatBubble[] = [{ id: 'bot-welcome', sender: 'bot', text: greetingText }]
@@ -830,7 +883,7 @@ function Chat({
       initial.push({
         id: 'bot-init-reply',
         sender: 'bot',
-        text: 'Asante! I have your story above. You can reply below to add more details (date, Nairobi route, or KSh amount), tap ✎ Edit on your message, or tap "Analyze & Build Appeal →" when ready.'
+        text: 'Okay, I have your statement above. Feel free to reply below if you want to add any other detail, edit your message, or click "Analyze & Review Extracted Facts" when you are ready.'
       })
     }
     return initial
@@ -862,64 +915,84 @@ function Chat({
   const generateNextBotReply = (updatedMessages: ChatBubble[]): string => {
     const dMsgs = updatedMessages.filter((m) => m.sender === 'driver')
     const lastMsg = (dMsgs[dMsgs.length - 1]?.text || '').trim()
+    const lastLower = lastMsg.toLowerCase()
     const fullText = dMsgs.map((m) => m.text.trim()).join(' ')
-
-    // 0. Handle simple greetings or very short messages without hallucinating facts
     const words = lastMsg.split(/\s+/).filter(Boolean)
-    const isGreetingOnly =
-      words.length <= 3 &&
-      /^(hi|hello|hey|habari|mambo|niaje|sasa|vipi|shikamoo|good\s+morning|good\s+afternoon|good\s+evening|help|plz|please)[!.,?\s]*$/i.test(
-        lastMsg
-      )
-    if (isGreetingOnly) {
-      return `Habari ${driverName ? driverName.split(' ')[0] : 'Dere'}! Please tell me in your own words what happened with your ${platform} trip or account (for example: an unpaid fare, a false passenger report, cancellations, or an account block).`
+
+    // 1. Natural conversational greetings ("hi", "hello", "hey", "good morning")
+    if (
+      words.length <= 4 &&
+      /^(hi|hello|hey|good\s+morning|good\s+afternoon|good\s+evening|greetings)[!.,?\s]*$/i.test(lastMsg)
+    ) {
+      return `Hi ${firstName}! How can I help you today? Tell me what happened with your ${platform} account or trip.`
     }
 
-    // Extract entities strictly from the latest message for acknowledgement, and from fullText for completeness
-    const lastEnts = extractEntities(lastMsg)
-    const newDates = lastEnts.filter((e) => e.label === 'DATE' || e.label === 'TIME').map((e) => e.text)
-    const newLocs = lastEnts.filter((e) => e.label === 'LOCATION').map((e) => e.text)
-    const newMoney = lastEnts.filter((e) => e.label === 'MONEY').map((e) => e.text)
+    // 2. Natural response to "how are you"
+    if (/\b(how\s+are\s+you|how\s+is\s+it\s+going|are\s+you\s+there)\b/i.test(lastLower) && words.length <= 6) {
+      return `I'm doing well, thank you! I'm ready to help you with your ${platform} appeal. What happened with your account or trip?`
+    }
 
-    const caughtNow: string[] = []
-    if (newDates.length > 0) caughtNow.push(`time (${newDates.slice(0, 2).join(', ')})`)
-    if (newLocs.length > 0) caughtNow.push(`location (${newLocs.slice(0, 2).join(' → ')})`)
-    if (newMoney.length > 0) caughtNow.push(`amount (${newMoney[0]})`)
-    const ackPrefix =
-      caughtNow.length > 0
-        ? `Asante, I recorded the ${caughtNow.join(' and ')}. `
-        : 'Thank you, I have recorded that in your statement. '
+    // 3. Natural response when driver says "thank you", "okay", "done", "no", "nothing else", "ready"
+    if (
+      words.length <= 5 &&
+      /^(ok|okay|yes|no|nope|nothing|nothing\s+else|that's\s+all|thats\s+all|done|ready|thanks|thank\s+you)[!.,?\s]*$/i.test(
+        lastMsg
+      )
+    ) {
+      if (fullText.split(/\s+/).filter(Boolean).length >= 6) {
+        return `Okay, great! Everything you shared is saved. Go ahead and click "Analyze & Review Extracted Facts" below to move to the next step.`
+      }
+      return `Okay, no problem! Whenever you're ready, just describe what happened with your ${platform} trip or account.`
+    }
 
-    // Check overall completeness across all driver messages so far
+    // 4. Natural response when driver says they want to appeal / account was suspended without full details yet
     const allEnts = extractEntities(fullText)
     const allDates = allEnts.filter((e) => e.label === 'DATE' || e.label === 'TIME')
     const allLocs = allEnts.filter((e) => e.label === 'LOCATION')
-    const totalWords = fullText.split(/\s+/).filter(Boolean).length
+    const substantiveMsgs = dMsgs.filter(
+      (m) =>
+        !/^(hi|hello|hey|ok|okay|yes|no|thanks|thank\s+you)[!.,?\s]*$/i.test(m.text.trim())
+    )
 
-    // 1. If the driver hasn't really described what happened yet (< 5 words total)
-    if (totalWords < 5) {
-      return `${ackPrefix}Could you share a bit more detail about what happened on the trip or why ${platform} restricted your account?`
-    }
-
-    // 2. Ask for missing When & Where if not provided yet
-    if (allDates.length === 0 && allLocs.length === 0 && dMsgs.length <= 2) {
-      return `${ackPrefix}When did this happen (day and approximate time), and what was the Nairobi pickup/drop-off area?`
-    }
-    if (allLocs.length === 0 && dMsgs.length <= 2) {
-      return `${ackPrefix}Which Nairobi area or route did this happen on (pickup and destination)?`
-    }
-    if (allDates.length === 0 && dMsgs.length <= 2) {
-      return `${ackPrefix}What day and approximate time did this happen?`
+    if (
+      substantiveMsgs.length === 1 &&
+      words.length <= 10 &&
+      /\b(appeal|suspended|suspension|blocked|deactivated|banned|restricted|help)\b/i.test(lastLower) &&
+      allDates.length === 0 &&
+      allLocs.length === 0
+    ) {
+      return `Okay, I understand. Having your ${platform} account affected is stressful, and I'll help you write a clear appeal. What happened leading up to this?`
     }
 
-    // 3. Ask case-specific follow-up based on what the driver actually wrote
-    if (dMsgs.length <= 2) {
+    // 5. Build a natural, empathetic acknowledgement of what the driver just said
+    let empathy = 'Okay, I understand.'
+    if (/\b(fare|paid|pay|unpaid|cash|mpesa|m-pesa|ksh|money|commission)\b/i.test(lastLower)) {
+      empathy = 'Okay, I understand. Dealing with an unpaid or disputed fare is frustrating.'
+    } else if (/\b(passenger|rude|drunk|safety|conduct|threat|abuse|smoke|five|5)\b/i.test(lastLower)) {
+      empathy = 'Okay, I understand. Thank you for explaining what happened with that passenger.'
+    } else if (/\b(cancel|cancelled|cancellation|rating|star|pin)\b/i.test(lastLower)) {
+      empathy = 'Okay, I understand how unfair it feels when cancellations or ratings affect your account.'
+    } else if (/\b(gps|fraud|selfie|identity|verification|blocked|suspended)\b/i.test(lastLower)) {
+      empathy = `Okay, I understand. We'll make sure that is explained clearly to ${platform}.`
+    }
+
+    // 6. Ask only for the next missing piece of information in a natural conversational way
+    if (allDates.length === 0 && allLocs.length === 0 && substantiveMsgs.length <= 2) {
+      return `${empathy} Just so we can include the trip details in your appeal letter, when did this happen, and what area or route were you driving in?`
+    }
+    if (allLocs.length === 0 && substantiveMsgs.length <= 2) {
+      return `${empathy} Which area or pickup/drop-off route did this happen on?`
+    }
+    if (allDates.length === 0 && substantiveMsgs.length <= 2) {
+      return `${empathy} Roughly what day and time did this happen?`
+    }
+
+    if (substantiveMsgs.length <= 2) {
       const followUp = getCaseSpecificFollowUp(noticeText, fullText)
-      return `${ackPrefix}${followUp.question}`
+      return `${empathy} ${followUp.question}`
     }
 
-    // 4. Wrap up without inventing anything
-    return `${ackPrefix}Your statement is recorded. You can tap **"Analyze & Review Extracted Facts"** below to inspect the extracted facts, or reply if you want to add anything else.`
+    return `Okay, I've got all of that down for your ${platform} appeal. Is there anything else you'd like to add, or are you ready to click "Analyze & Review Extracted Facts" below?`
   }
 
   const handleSendMessage = (customText?: string) => {
@@ -1076,8 +1149,19 @@ function Chat({
   }
 
   const review = async () => {
-    // If the driver typed something in the draft box without pressing Send, include it automatically
-    const finalNarrative = [combinedNarrative, draft.trim()].filter(Boolean).join(' ').trim()
+    // Only include substantive driver messages (ignore standalone "hi"/"hello"/"ok" chat turns in the formal letter)
+    const substantiveParts = driverMessages
+      .map((m) => m.text.trim())
+      .filter(
+        (t) =>
+          !/^(hi|hello|hey|ok|okay|yes|no|nope|thanks|thank\s+you|done|ready|nothing|nothing\s+else|that's\s+all)[!.,?\s]*$/i.test(
+            t
+          )
+      )
+    if (draft.trim()) {
+      substantiveParts.push(draft.trim())
+    }
+    const finalNarrative = (substantiveParts.join(' ').trim() || combinedNarrative.trim())
     if (!finalNarrative) return
     onChangeNarrative(finalNarrative)
     setProcessing(true)
@@ -1829,9 +1913,30 @@ function Preview({
   const [submitting, setSubmitting] = useState(false)
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [pdfSuccess, setPdfSuccess] = useState(false)
+  const platformSupportEmailMap: Record<string, string> = {
+    Bolt: 'kenya-driver@bolt.eu',
+    Uber: 'support@uber.com',
+    Little: 'drivers@little.bz',
+    Faras: 'support@faras.com',
+    Yego: 'support@yego.sg'
+  }
+  const defaultPlatEmail = platformSupportEmailMap[platform] || 'support@bolt.eu'
+
   const [isEditingAppeal, setIsEditingAppeal] = useState(false)
-  const [tawuPhone, setTawuPhone] = useState('+254 712 345 678')
-  const [tawuEmail, setTawuEmail] = useState('info@tawu.or.ke')
+  const [recipientType, setRecipientType] = useState<'platform' | 'ntsa' | 'tawu'>('platform')
+  const [recipientPhone, setRecipientPhone] = useState('+254 712 345 678')
+  const [recipientEmail, setRecipientEmail] = useState(defaultPlatEmail)
+
+  const handleSelectRecipient = (type: 'platform' | 'ntsa' | 'tawu') => {
+    setRecipientType(type)
+    if (type === 'platform') {
+      setRecipientEmail(defaultPlatEmail)
+    } else if (type === 'ntsa') {
+      setRecipientEmail('complaints@ntsa.go.ke')
+    } else {
+      setRecipientEmail('info@tawu.or.ke')
+    }
+  }
 
   const headline =
     analysis.appeal.headline ||
@@ -1886,13 +1991,20 @@ function Preview({
     }
   }
 
-  const cleanTawuDigits = tawuPhone.replace(/\D/g, '').replace(/^0/, '254')
-  const whatsappShareUrl = `https://wa.me/${cleanTawuDigits}?text=${encodeURIComponent(
-    `*TAWU-KENYA DIGITAL DRIVER GRIEVANCE REPORT*\n*Submitted via Sauti ya Dere*\n\n${bodyText}`
+  const cleanDigits = recipientPhone.replace(/\D/g, '').replace(/^0/, '254')
+  const recipientTitle =
+    recipientType === 'platform'
+      ? `${platform.toUpperCase()} DRIVER SUPPORT APPEAL`
+      : recipientType === 'ntsa'
+        ? 'NTSA TRANSPORT APPEALS SUBMISSION'
+        : 'TAWU-KENYA DRIVER ESCALATION REPORT'
+
+  const whatsappShareUrl = `https://wa.me/${cleanDigits}?text=${encodeURIComponent(
+    `*${recipientTitle}*\n\n${bodyText}`
   )}`
 
-  const mailtoShareUrl = `mailto:${encodeURIComponent(tawuEmail.trim() || 'info@tawu.or.ke')}?subject=${encodeURIComponent(
-    `[TAWU Driver Appeal] ${headline}`
+  const mailtoShareUrl = `mailto:${encodeURIComponent(recipientEmail.trim() || defaultPlatEmail)}?subject=${encodeURIComponent(
+    headline
   )}&body=${encodeURIComponent(bodyText)}`
 
   return (
@@ -1908,20 +2020,20 @@ function Preview({
         <div className="flex items-end justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">
-              Step 5 · Structured Legal Dossier
+              Step 5 · Formal Appeal Letter
             </p>
-            <h1 className="mt-1 text-2xl font-black">Formal Appeal &amp; TAWU Report</h1>
+            <h1 className="mt-1 text-2xl font-black">Your {platform} Appeal</h1>
           </div>
           <button
             type="button"
             onClick={() => setIsEditingAppeal(!isEditingAppeal)}
             className="flex items-center gap-1 rounded-lg bg-[#E9F3ED] px-2.5 py-1 text-xs font-extrabold text-[#1E5E3A]"
           >
-            <Edit2 size={12} /> {isEditingAppeal ? 'Done Editing' : 'Edit Dossier'}
+            <Edit2 size={12} /> {isEditingAppeal ? 'Done Editing' : 'Edit Letter'}
           </button>
         </div>
 
-        {/* Cited Legal & Union Rules */}
+        {/* Cited Legal & Platform Rules */}
         <div className="flex flex-wrap gap-1.5">
           {policyRules.map((ruleId) => (
             <span
@@ -1933,15 +2045,15 @@ function Preview({
           ))}
         </div>
 
-        {/* Structured 5-Section Formal Legal Dossier */}
+        {/* Structured 5-Section Formal Appeal Letter */}
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2.5">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#1E5E3A]">
-                OFFICIAL DRIVER GRIEVANCE &amp; REINSTATEMENT DOSSIER
+                ADDRESSED TO
               </p>
               <b className="text-xs text-[#0F172A]">
-                {platform} Appeals Desk &amp; TAWU-Kenya Union Escalation
+                {platform} Driver Support &amp; Appeals Review Team
               </b>
             </div>
             <FileText className="text-[#1E5E3A]" size={18} />
@@ -1970,56 +2082,91 @@ function Preview({
           </Btn>
         </div>
 
-        {/* Dedicated TAWU-Kenya Union Contact & Direct Escalation Card */}
+        {/* Flexible Recipient Selector: Platform Support (Default), NTSA, or TAWU */}
         <div className="flex flex-col gap-2.5 rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-4 text-xs">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#1E5E3A]">
-                UNION ESCALATION DESK
+                SEND OR ESCALATE YOUR APPEAL
               </p>
               <b className="text-sm text-[#0F172A]">
-                Send Report to TAWU-Kenya (Transport Workers Union)
+                Choose Recipient ({platform} Support, NTSA, or Union)
               </b>
             </div>
-            <Phone className="text-[#1E5E3A]" size={18} />
+            <Share2 className="text-[#1E5E3A]" size={18} />
           </div>
-          <p className="text-[11px] leading-4 text-slate-600">
-            Send your structured dossier directly to the TAWU-Kenya Digital Transport Desk or enter your union representative&apos;s contact below:
-          </p>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleSelectRecipient('platform')}
+              className={`rounded-lg py-1.5 text-[11px] font-extrabold transition ${
+                recipientType === 'platform'
+                  ? 'bg-[#1E5E3A] text-white'
+                  : 'border border-slate-300 bg-white text-slate-700'
+              }`}
+            >
+              {platform} Support
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectRecipient('ntsa')}
+              className={`rounded-lg py-1.5 text-[11px] font-extrabold transition ${
+                recipientType === 'ntsa'
+                  ? 'bg-[#1E5E3A] text-white'
+                  : 'border border-slate-300 bg-white text-slate-700'
+              }`}
+            >
+              NTSA Desk
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectRecipient('tawu')}
+              className={`rounded-lg py-1.5 text-[11px] font-extrabold transition ${
+                recipientType === 'tawu'
+                  ? 'bg-[#1E5E3A] text-white'
+                  : 'border border-slate-300 bg-white text-slate-700'
+              }`}
+            >
+              TAWU Union
+            </button>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-700">
-              TAWU WhatsApp Desk Number
+              Recipient Email
               <input
-                type="tel"
-                value={tawuPhone}
-                onChange={(e) => setTawuPhone(e.target.value)}
+                type="email"
+                value={recipientEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-normal text-slate-900 outline-none focus:border-[#1E5E3A]"
               />
             </label>
             <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-700">
-              TAWU Escalation Email
+              WhatsApp Contact Number
               <input
-                type="email"
-                value={tawuEmail}
-                onChange={(e) => setTawuEmail(e.target.value)}
+                type="tel"
+                value={recipientPhone}
+                onChange={(e) => setRecipientPhone(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-normal text-slate-900 outline-none focus:border-[#1E5E3A]"
               />
             </label>
           </div>
+
           <div className="grid grid-cols-2 gap-2 pt-1">
+            <a
+              href={mailtoShareUrl}
+              className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-[#1E5E3A] px-3 text-center text-xs font-extrabold text-white hover:bg-[#174A2E]"
+            >
+              ✉️ Email to {recipientType === 'platform' ? platform : recipientType.toUpperCase()}
+            </a>
             <a
               href={whatsappShareUrl}
               target="_blank"
               rel="noreferrer"
-              className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-[#1E5E3A] px-3 text-center text-xs font-extrabold text-white hover:bg-[#174A2E]"
-            >
-              📲 Send to TAWU WhatsApp
-            </a>
-            <a
-              href={mailtoShareUrl}
               className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-[#1E5E3A] bg-white px-3 text-center text-xs font-extrabold text-[#1E5E3A] hover:bg-emerald-50"
             >
-              ✉️ Email to TAWU Desk
+              📲 Send via WhatsApp
             </a>
           </div>
         </div>
