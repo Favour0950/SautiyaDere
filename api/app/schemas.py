@@ -77,3 +77,17 @@ class AnalyzeResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
+
+
+class SmsReminderRequest(BaseModel):
+    phone_number: str
+    case_ref: str
+    days_remaining: int
+
+
+class SmsReminderResponse(BaseModel):
+    status: str
+    recipient: str
+    message: str
+    error: str | None = None
+    response: dict | None = None

@@ -19,5 +19,9 @@ class Settings:
     # Key for the AI service (T05). Only ever held by the backend.
     anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY") or None
 
+    # Africa's Talking SMS Credentials
+    africastalking_username: str = os.getenv("AFRICASTALKING_USERNAME", "sandbox")
+    africastalking_api_key: str | None = os.getenv("AFRICASTALKING_API_KEY") or None
+
 
 settings = Settings()
