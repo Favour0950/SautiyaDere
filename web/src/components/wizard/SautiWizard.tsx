@@ -718,128 +718,52 @@ function Verify({
 
         {/* Extracted Facts with Empty-State & Add Fact */}
         <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-black uppercase tracking-wider text-slate-400">
-              Extracted facts · click pencil to edit
+          <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-400">
+            Extracted facts · click pencil to edit
+          </p>
+          {analysis.entities.length === 0 && (
+            <p className="text-sm text-slate-500">
+              No dates, places or amounts found in your story yet. Go back and add when and where the
+              trip happened, and the fare.
             </p>
-            <button
-              type="button"
-              onClick={() => setIsAddingFact(true)}
-              className="inline-flex items-center gap-1 text-xs font-extrabold text-[#1E5E3A] hover:underline"
-            >
-              <Plus size={13} /> Add Fact
-            </button>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {analysis.entities.map((item, idx) => (
+              <div key={idx} className="flex items-center">
+                {editingIndex === idx ? (
+                  <div className="flex items-center gap-1 rounded-full border border-[#1E5E3A] bg-white px-2 py-1">
+                    <input
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="text-xs font-bold text-[#1E5E3A] outline-none"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEdit(idx)
+                        if (e.key === 'Escape') setEditingIndex(null)
+                      }}
+                    />
+                    <button
+                      onClick={() => handleSaveEdit(idx)}
+                      className="text-xs font-extrabold text-[#1E5E3A]"
+                    >
+                      ✓
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleStartEdit(idx, item.text)}
+                    className="flex items-center gap-1 rounded-full bg-[#E9F3ED] px-3 py-2 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB]"
+                  >
+                    <span>
+                      {item.label}: {item.text}
+                    </span>
+                    <Edit2 size={12} className="ml-1 opacity-70" />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-
-          {analysis.entities && analysis.entities.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {analysis.entities.map((item, idx) => (
-                <div key={idx} className="flex items-center">
-                  {editingIndex === idx ? (
-                    <div className="flex items-center gap-1 rounded-full border border-[#1E5E3A] bg-white px-2 py-1">
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="text-xs font-bold text-[#1E5E3A] outline-none"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveEdit(idx)
-                          if (e.key === 'Escape') setEditingIndex(null)
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSaveEdit(idx)}
-                        className="text-xs font-extrabold text-[#1E5E3A]"
-                        title="Save edit"
-                      >
-                        ✓
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center rounded-full bg-[#E9F3ED] pl-3 pr-1.5 py-1 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB] transition">
-                      <button
-                        type="button"
-                        onClick={() => handleStartEdit(idx, item.text)}
-                        className="flex items-center gap-1 text-left"
-                      >
-                        <span>
-                          {item.label}: {item.text}
-                        </span>
-                        <Edit2 size={12} className="ml-1 opacity-70" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteEntity(idx)}
-                        className="ml-1.5 rounded-full p-1 text-slate-400 hover:bg-[#B9DCC6]/50 hover:text-red-600 transition"
-                        title="Delete fact"
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-[#F8FAFC] p-4 text-center">
-              <p className="text-xs text-slate-500">
-                No trip facts detected yet. Click '+ Add Fact' to add date, time, route, or fare.
-              </p>
-              <button
-                type="button"
-                onClick={() => setIsAddingFact(true)}
-                className="mt-2.5 inline-flex items-center gap-1 rounded-lg bg-[#E9F3ED] px-3 py-1.5 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB] transition"
-              >
-                <Plus size={13} /> Add Fact
-              </button>
-            </div>
-          )}
-
-          {/* Form to add a new fact */}
-          {isAddingFact && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] p-3">
-              <select
-                value={newFactLabel}
-                onChange={(e) => setNewFactLabel(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-[#1E5E3A] outline-none"
-              >
-                <option value="DATE">DATE</option>
-                <option value="TIME">TIME</option>
-                <option value="ROUTE">ROUTE</option>
-                <option value="FARE">FARE</option>
-                <option value="LOCATION">LOCATION</option>
-                <option value="PASSENGER">PASSENGER</option>
-              </select>
-              <input
-                type="text"
-                placeholder="Value (e.g. 14 May, 4:30 PM, Westlands)"
-                value={newFactText}
-                onChange={(e) => setNewFactText(e.target.value)}
-                className="flex-1 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[#1E5E3A]"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveNewFact()
-                  if (e.key === 'Escape') setIsAddingFact(false)
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleSaveNewFact}
-                className="rounded-lg bg-[#1E5E3A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#174A2E]"
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAddingFact(false)}
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="mt-auto">
@@ -1302,9 +1226,11 @@ export default function Page() {
       confidence: null,
       needs_confirmation: true
     },
+    // Facts and missing evidence start empty and only ever come from the API.
+    // Sample values here would reach the driver's appeal as if they were theirs.
     entities: [],
     evidence: {
-      readiness: null,
+      readiness: 0,
       missing: [],
       optional: []
     },
@@ -1414,14 +1340,11 @@ export default function Page() {
             confidence: resData.classification?.confidence ?? prev.classification.confidence ?? null,
             needs_confirmation: resData.classification?.needs_confirmation ?? prev.classification.needs_confirmation
           },
-          entities: (Array.isArray(resData.entities) && resData.entities.length > 0)
-            ? resData.entities
-            : prev.entities,
+          // An empty list from the API means "none found": show it as empty.
+          entities: Array.isArray(resData.entities) ? resData.entities : [],
           evidence: {
             readiness: resData.evidence?.readiness ?? prev.evidence.readiness,
-            missing: (Array.isArray(resData.evidence?.missing) && resData.evidence.missing.length > 0)
-              ? resData.evidence.missing
-              : prev.evidence.missing,
+            missing: Array.isArray(resData.evidence?.missing) ? resData.evidence.missing : [],
             optional: resData.evidence?.optional ?? prev.evidence.optional
           },
           appeal: {

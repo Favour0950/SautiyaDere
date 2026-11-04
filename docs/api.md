@@ -99,6 +99,50 @@ Until T31 joins the pipeline, the stub returns `"stub": true` with nulls and emp
 
 Request bodies are never logged or stored. Always run Uvicorn with `--no-access-log`. Validation errors do not echo the submitted text back.
 
+## Personal-details filter and fact extraction (T15, T16)
+
+Both live in `app/services/` and share one spaCy model (`en_core_web_sm`, installed from `requirements.txt`; nothing downloads at runtime). They are not joined to `/analyze` yet; that is T31. In the app the filter runs first and extraction reads the filtered text.
+
+```python
+from app.services.redaction import redact, restore
+from app.services.extraction import extract
+
+result = redact(story)               # result.text has <PHONE_1>, <PERSON_1>...
+facts = extract(result.text)         # [Entity(label="DATE", text="Sunday 11th"), ...]
+appeal = restore(draft, result.mapping)   # appeal.text, appeal.missing, appeal.unknown
+```
+
+`result.mapping` holds the real values. Keep it in the request handler only: never log it, return it, or send it to the AI service.
+
+**The filter** (`redaction.py`, Presidio) hides PHONE, PLATE, MPESA_CODE, PERSON and EMAIL. Details and results are in [privacy-and-redaction.md](privacy-and-redaction.md).
+
+**Fact extraction** (`extraction.py`, spaCy) returns DATE, TIME, LOCATION, MONEY and TRIP_ID, in order and without repeats. An `EntityRuler` placed before spaCy's own entity model holds the patterns:
+
+| Label | Examples it finds |
+|---|---|
+| MONEY | `KSh 2,300`, `Ksh2850`, `KES 950`, `bob 200`, `200bob`, `1700/-`, `2k`, and plain numbers after payment words: "paid 350", "fare was 1050", "walilipa 750", "badala ya 2,500" |
+| DATE | `Sunday 11th`, `Friday 9 October`, `3rd Oct`, `last Thursday`, `7/10/2026`, `jana`, `juzi`, `Jumamosi`, `tarehe 4 Oktoba` |
+| TIME | `5.30pm`, `8:40pm`, `9:30 PM`, `midnight`, `7:15 in the morning`, `saa tatu usiku`, `saa kumi na moja jioni` |
+| LOCATION | Places in `data/nairobi_locations.json`, any case. Places that are everyday words (Fedha, Umoja) need a capital |
+| TRIP_ID | `TRX-67091` anywhere; short codes like `F5UN` only after "trip id" or "trip no" |
+
+spaCy's own entity guesses are switched off (`KEEP_FROM_MODEL` in `extraction.py`): on the build set they only added wrong facts, such as "four years" as a date.
+
+Not handled yet: amounts in words ("elfu mbili"), dates without a year or month name ("23/10").
+
+**Scoring** against the labelled synthetic cases:
+
+```bash
+cd api && source .venv/bin/activate
+python scripts/score_pipeline.py              # build set: filter, facts kept, extraction
+python scripts/score_pipeline.py --errors     # also list what was missed or wrongly added
+python scripts/score_pipeline.py ../data/synthetic/held_out_set.jsonl
+```
+
+Tune patterns on the build set only. On 4 Nov 2026 both the build and held-out sets scored 100% for every label.
+
+To add a place or a name, edit `data/nairobi_locations.json` or `data/kenyan_names.json`; the tests in `data/tests/` check the files.
+
 ## Check the AI key (T05)
 
 Put `ANTHROPIC_API_KEY` in `api/.env`, then:
@@ -110,12 +154,16 @@ python scripts/check_ai_key.py
 
 ## Deploy to Cloud Run (T10)
 
-Needs the gcloud CLI and a GCP project with billing on.
+Needs the gcloud CLI, a GCP project with billing on, and an Artifact Registry Docker repository called `sauti` in `europe-west1` (create it once with `gcloud artifacts repositories create sauti --repository-format=docker --location=europe-west1`).
+
+The image needs files from `data/` as well as `api/`, so it is built from the repo root. `gcloud run deploy --source` cannot do that, so build first, then deploy the image. Run both from the repo root:
 
 ```bash
-cd api
-gcloud run deploy sauti-api --source . --region europe-west1 \
-  --memory 2Gi --allow-unauthenticated \
+gcloud builds submit --config api/cloudbuild.yaml .
+
+gcloud run deploy sauti-api \
+  --image europe-west1-docker.pkg.dev/<project-id>/sauti/sauti-api:latest \
+  --region europe-west1 --memory 2Gi --allow-unauthenticated \
   --set-env-vars CORS_ORIGINS=https://<pages-domain> \
   --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest
 ```
@@ -124,8 +172,11 @@ Keep the key in Secret Manager (`anthropic-api-key`), never in `--set-env-vars`.
 
 ## Docker
 
+Build from the repo root, not from `api/`, so `data/` can go into the image:
+
 ```bash
-cd api
-docker build -t sauti-api .
-docker run -p 8080:8080 --env-file .env sauti-api
+docker build -f api/Dockerfile -t sauti-api .
+docker run -p 8080:8080 --env-file api/.env sauti-api
 ```
+
+`.dockerignore` at the repo root lists the only files Docker may see: `api/requirements.txt`, `api/app/`, and the `.json` and `.py` files directly in `data/`. Real cases (`data/real/`), synthetic sets, `.env` files and the front end never go into the image. If the API starts needing a new kind of file, add it there.
