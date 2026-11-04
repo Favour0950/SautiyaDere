@@ -65,22 +65,22 @@ function extractTripFacts(caseData) {
   const date =
     findEntity(['DATE', 'EVENT_DATE', 'TRIP_DATE']) ||
     caseData?.date ||
-    '14 May 2026'
+    'As stated in dossier'
 
   const time =
     findEntity(['TIME', 'EVENT_TIME', 'TRIP_TIME']) ||
     caseData?.time ||
-    'Approx. 4:30 PM'
+    'Operating hours'
 
   const location =
     findEntity(['ROUTE', 'LOCATION', 'PICKUP', 'DROPOFF', 'ORIGIN', 'DESTINATION']) ||
     caseData?.location ||
-    'Westlands to JKIA'
+    'Trip route on record'
 
   const fare =
     findEntity(['FARE', 'AMOUNT', 'DISPUTE_AMOUNT', 'PRICE', 'PAYMENT']) ||
     caseData?.fare ||
-    'Disputed Fare Recalculation'
+    'Amount under dispute'
 
   return { date, time, location, fare }
 }
