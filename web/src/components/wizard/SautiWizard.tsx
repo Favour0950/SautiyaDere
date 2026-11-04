@@ -633,51 +633,74 @@ type ChatBubble = {
   text: string
 }
 
+function detectTopicFromText(driverText: string, fallbackNotice: string): 'fare' | 'safety' | 'cancel' | 'fraud' {
+  const t = driverText.toLowerCase()
+  // Always prioritize what the driver actually typed in chat over the dropdown default
+  if (/\b(safety|conduct|drunk|mlevi|walevi|rude|smoke|smoking|sigara|passengers|watu\s+watano|threat|assault|harass|police|polisi|guard|askari)\b/.test(t)) {
+    return 'safety'
+  }
+  if (/\b(cancel|cancelled|cancellation|rating|star|1-star|pin|pickup\s+pin|acceptance)\b/.test(t)) {
+    return 'cancel'
+  }
+  if (/\b(fraud|gps|spoof|selfie|identity|verification|shared\s+account|duplicate|ghost|algorithm)\b/.test(t)) {
+    return 'fraud'
+  }
+  if (/\b(fare|payment|paid|unpaid|malipo|nauli|kulipa|cash|mpesa|m-pesa|ksh|kes|bob|commission|deduct|wallet|balance)\b/.test(t)) {
+    return 'fare'
+  }
+  // Only fall back to noticeText if the driver's text had no topic keywords
+  const n = fallbackNotice.toLowerCase()
+  if (n.includes('safety') || n.includes('conduct')) return 'safety'
+  if (n.includes('cancel') || n.includes('rating')) return 'cancel'
+  if (n.includes('fraud') || n.includes('identity') || n.includes('gps')) return 'fraud'
+  return 'fare'
+}
+
 function getCaseSpecificFollowUp(noticeText: string, combinedText: string): {
   question: string
   chips: string[]
 } {
-  const lower = `${noticeText} ${combinedText}`.toLowerCase()
-  if (lower.includes('fare') || lower.includes('payment') || lower.includes('malipo') || lower.includes('cash')) {
+  const topic = detectTopicFromText(combinedText, noticeText)
+  if (topic === 'fare') {
     return {
       question:
-        'Got it. How much was the unpaid or disputed fare in KSh, do you have a Trip ID or M-Pesa reference, and did you already report this in the app?',
+        'How much was the disputed or unpaid fare in KSh, and did you already report it in the app?',
       chips: [
-        'Fare was KSh 1,450 and rider walked away without paying.',
-        'App deducted KSh 850 commission on an unpaid cash trip.',
-        'I reported in-app immediately and got an automated reply.'
+        'The fare was KSh 1,450 and the rider walked away without paying.',
+        'The app deducted KSh 850 commission on an unpaid cash trip.',
+        'I reported it in the app immediately after the trip.'
       ]
     }
   }
-  if (lower.includes('safety') || lower.includes('conduct') || lower.includes('passenger') || lower.includes('rude')) {
+  if (topic === 'safety') {
     return {
       question:
-        'Understood. Which safety rule were you enforcing (e.g., 4-passenger insurance limit, no smoking, speed limit), and was there a witness, boda rider, guard, or dashcam?',
+        'What happened during the interaction with the passenger, and was there any witness, security guard, or dashcam?',
       chips: [
         '5 passengers tried to board my 4-seater car and I politely declined.',
-        'Rider demanded I speed and smoke inside the vehicle.',
-        'Building security guard witnessed the entire exchange.'
+        'The passenger was intoxicated and became verbally abusive.',
+        'A security guard at the gate witnessed the interaction.'
       ]
     }
   }
-  if (lower.includes('cancel') || lower.includes('rating') || lower.includes('star')) {
+  if (topic === 'cancel') {
     return {
       question:
-        'Noted. Were the cancellations or low ratings caused by wrong pickup pins, heavy traffic, an unsafe alley at night, or the rider asking you on chat to cancel?',
+        'What caused the cancellation or low rating (for example: wrong pickup pin, rider request on chat, traffic, or an unsafe pickup spot)?',
       chips: [
-        'Riders placed wrong pins in CBD and told me on chat to cancel.',
-        'Pickup was in an unlit alley late at night so I cancelled for safety.',
-        'My rating is 4.89 across 1,200+ completed trips.'
+        'The rider placed the wrong pickup pin and asked me on chat to cancel.',
+        'The pickup was in an unlit area late at night so I cancelled for safety.',
+        'Heavy traffic delayed pickup and the rider gave me a 1-star rating.'
       ]
     }
   }
   return {
     question:
-      'Got it. Did the app flag you for GPS jumps around tall buildings, repeat legitimate commuter trips, or a selfie verification glitch? Please also confirm you never share your account.',
+      'What warning or reason did the app show when flagging your account (for example: GPS signal jump, selfie verification, or irregular trip flag)?',
     chips: [
-      'GPS signal bounced between Upper Hill and CBD towers during rain.',
-      'I am the sole NTSA-licensed driver on this account and never share it.',
-      'Selfie check failed only because of poor street lighting at night.'
+      'The app flagged GPS jumps while I was driving near tall buildings in Upper Hill.',
+      'I am the sole licensed driver on this account and never share it.',
+      'The night selfie check failed because of poor street lighting.'
     ]
   }
 }
@@ -749,40 +772,65 @@ function Chat({
 
   const generateNextBotReply = (updatedMessages: ChatBubble[]): string => {
     const dMsgs = updatedMessages.filter((m) => m.sender === 'driver')
-    const fullText = dMsgs.map((m) => m.text).join(' ')
-    const ents = extractEntities(fullText)
-    const dates = ents.filter((e) => e.label === 'DATE' || e.label === 'TIME').map((e) => e.text)
-    const locs = ents.filter((e) => e.label === 'LOCATION').map((e) => e.text)
-    const money = ents.filter((e) => e.label === 'MONEY').map((e) => e.text)
+    const lastMsg = (dMsgs[dMsgs.length - 1]?.text || '').trim()
+    const fullText = dMsgs.map((m) => m.text.trim()).join(' ')
 
-    const caughtParts: string[] = []
-    if (dates.length > 0) caughtParts.push(`time (${dates.slice(0, 2).join(', ')})`)
-    if (locs.length > 0) caughtParts.push(`route (${locs.slice(0, 2).join(' → ')})`)
-    if (money.length > 0) caughtParts.push(`amount (${money[0]})`)
-    const ackPrefix =
-      caughtParts.length > 0
-        ? `Asante! I noted the ${caughtParts.join(' and ')}. `
-        : 'Pole sana for going through that, Dere. '
-
-    // 1. If missing Date/Time or Nairobi Location on first turn, ask for When & Where
-    if ((dates.length === 0 || locs.length === 0) && dMsgs.length === 1) {
-      if (dates.length === 0 && locs.length === 0) {
-        return `${ackPrefix}To ground your appeal under NTSA LN 120, **when did this happen (day & approximate time)** and **what was the Nairobi pickup and drop-off route** (e.g., Westlands to Syokimau)?`
-      }
-      if (locs.length === 0) {
-        return `${ackPrefix}**Which Nairobi area or route** did this happen on (pickup and destination)?`
-      }
-      return `${ackPrefix}**What day and approximate time** did this incident happen (e.g., Friday 9 Oct around 8:30pm)?`
+    // 0. Handle simple greetings or very short messages without hallucinating facts
+    const words = lastMsg.split(/\s+/).filter(Boolean)
+    const isGreetingOnly =
+      words.length <= 3 &&
+      /^(hi|hello|hey|habari|mambo|niaje|sasa|vipi|shikamoo|good\s+morning|good\s+afternoon|good\s+evening|help|plz|please)[!.,?\s]*$/i.test(
+        lastMsg
+      )
+    if (isGreetingOnly) {
+      return `Habari ${driverName ? driverName.split(' ')[0] : 'Dere'}! Please tell me in your own words what happened with your ${platform} trip or account (for example: an unpaid fare, a false passenger report, cancellations, or an account block).`
     }
 
-    // 2. Ask case-specific follow-up on turn 1 (if date+loc already provided) or turn 2
+    // Extract entities strictly from the latest message for acknowledgement, and from fullText for completeness
+    const lastEnts = extractEntities(lastMsg)
+    const newDates = lastEnts.filter((e) => e.label === 'DATE' || e.label === 'TIME').map((e) => e.text)
+    const newLocs = lastEnts.filter((e) => e.label === 'LOCATION').map((e) => e.text)
+    const newMoney = lastEnts.filter((e) => e.label === 'MONEY').map((e) => e.text)
+
+    const caughtNow: string[] = []
+    if (newDates.length > 0) caughtNow.push(`time (${newDates.slice(0, 2).join(', ')})`)
+    if (newLocs.length > 0) caughtNow.push(`location (${newLocs.slice(0, 2).join(' → ')})`)
+    if (newMoney.length > 0) caughtNow.push(`amount (${newMoney[0]})`)
+    const ackPrefix =
+      caughtNow.length > 0
+        ? `Asante, I recorded the ${caughtNow.join(' and ')}. `
+        : 'Thank you, I have recorded that in your statement. '
+
+    // Check overall completeness across all driver messages so far
+    const allEnts = extractEntities(fullText)
+    const allDates = allEnts.filter((e) => e.label === 'DATE' || e.label === 'TIME')
+    const allLocs = allEnts.filter((e) => e.label === 'LOCATION')
+    const totalWords = fullText.split(/\s+/).filter(Boolean).length
+
+    // 1. If the driver hasn't really described what happened yet (< 5 words total)
+    if (totalWords < 5) {
+      return `${ackPrefix}Could you share a bit more detail about what happened on the trip or why ${platform} restricted your account?`
+    }
+
+    // 2. Ask for missing When & Where if not provided yet
+    if (allDates.length === 0 && allLocs.length === 0 && dMsgs.length <= 2) {
+      return `${ackPrefix}When did this happen (day and approximate time), and what was the Nairobi pickup/drop-off area?`
+    }
+    if (allLocs.length === 0 && dMsgs.length <= 2) {
+      return `${ackPrefix}Which Nairobi area or route did this happen on (pickup and destination)?`
+    }
+    if (allDates.length === 0 && dMsgs.length <= 2) {
+      return `${ackPrefix}What day and approximate time did this happen?`
+    }
+
+    // 3. Ask case-specific follow-up based on what the driver actually wrote
     if (dMsgs.length <= 2) {
       const followUp = getCaseSpecificFollowUp(noticeText, fullText)
       return `${ackPrefix}${followUp.question}`
     }
 
-    // 3. Turn 3+: Wrap up and invite to analyze or edit
-    return `${ackPrefix}I now have a strong factual record for your ${platform} appeal! You can tap **"Analyze & Build Appeal →"** below, send any extra detail, or tap **✎ Edit** on any of your messages above.`
+    // 4. Wrap up without inventing anything
+    return `${ackPrefix}Your statement is recorded. You can tap **"Analyze & Review Extracted Facts"** below to inspect the extracted facts, or reply if you want to add anything else.`
   }
 
   const handleSendMessage = (customText?: string) => {
@@ -2204,7 +2252,7 @@ export default function Page() {
   const [noticeFileName, setNoticeFileName] = useState('')
   const [narrative, setNarrative] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<string[]>([])
-  const [evidenceHeld, setEvidenceHeld] = useState<string[]>(['TRIP_RECEIPT_SCREENSHOT'])
+  const [evidenceHeld, setEvidenceHeld] = useState<string[]>([])
 
   // 3. Analysis Result from Backend or Local Kenyan NLP Engine
   const [analysis, setAnalysis] = useState<AnalysisResult>({
@@ -2377,14 +2425,8 @@ export default function Page() {
           },
           entities: mergedEntities,
           evidence: localEv,
-          appeal: {
-            headline: resData.appeal?.headline || localApp.headline,
-            body: resData.appeal?.body || localApp.body,
-            policy_rules:
-              resData.appeal?.policy_rules?.length > 0
-                ? resData.appeal.policy_rules
-                : localApp.policy_rules
-          }
+          // Always use localApp for the appeal text so the driver's exact words and only verified facts/evidence are included
+          appeal: localApp
         })
         return
       }

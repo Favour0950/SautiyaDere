@@ -184,18 +184,19 @@ export const CASE_CHECKLISTS: Record<string, ChecklistItemSpec[]> = {
 }
 
 // 2. Nairobi & Kenya Places Lexicon (from data/nairobi_locations.json)
+// Excludes ambiguous everyday English nouns ("Town", "Banana", "Pipeline", "Archives")
 const NAIROBI_PLACES = [
   'Westlands', 'JKIA', 'Jomo Kenyatta International Airport', 'Wilson Airport', 'Kilimani',
   'Kileleshwa', 'Lavington', 'Karen', 'Langata', 'South B', 'South C', 'Syokimau',
-  'Mlolongo', 'Kitengela', 'Athi River', 'Embakasi', 'Utawala', 'Pipeline', 'Donholm',
+  'Mlolongo', 'Kitengela', 'Athi River', 'Embakasi', 'Utawala', 'Donholm',
   'Buruburu', 'Umoja', 'Kayole', 'Komarock', 'Eastleigh', 'Pangani', 'Parklands',
   'Highridge', 'Ngara', 'Upper Hill', 'Hurlingham', 'Yaya Centre', 'Sarit Centre',
   'Two Rivers', 'Village Market', 'Gigiri', 'Runda', 'Muthaiga', 'Roysambu', 'Kasarani',
   'Zimmerman', 'Kahawa West', 'Kahawa Sukari', 'Kahawa Wendani', 'Githurai', 'Ruiru',
   'Juja', 'Thika', 'Thika Road', 'TRM', 'Mombasa Road', 'Ngong Road', 'Waiyaki Way',
-  'Jogoo Road', 'Kiambu Road', 'Kiambu', 'Ruaka', 'Banana', 'Limuru', 'Kikuyu',
+  'Jogoo Road', 'Kiambu Road', 'Kiambu', 'Ruaka', 'Limuru', 'Kikuyu',
   'Kawangware', 'Dagoretti', 'Ngong', 'Ongata Rongai', 'Rongai', 'Kiserian',
-  'Industrial Area', 'CBD', 'Town', 'Nairobi CBD', 'Kencom', 'Archives', 'Railways',
+  'Industrial Area', 'CBD', 'Nairobi CBD', 'Kencom',
   'Nyayo Stadium', 'Madaraka', 'Strathmore', 'Kenyatta Hospital', 'KNH', 'Valley Road',
   'Riverside', 'Spring Valley', 'Loresho', 'Mountain View', 'Kangemi', 'Uthiru',
   'Kinoo', 'Fedha', 'Tassia', 'Imara Daima', 'Nyayo Estate', 'Ruai', 'Kamulu',
@@ -339,14 +340,14 @@ export function extractEntities(text: string): ExtractedEntity[] {
     }
   }
 
-  // TRIP_ID patterns (e.g., TRP-884120, #482910)
+  // TRIP_ID patterns — require explicit prefix + digits so normal words after "trip" never match
   const tripPatterns = [
-    /\b(?:TRP|TRIP|BOLT|UBER|LTL|FRS)-[A-Z0-9]{4,10}\b/gi,
-    /\btrip\s*(?:id|ref)?\s*[:#]?\s*([A-Z0-9-]{5,12})\b/gi
+    /\b(?:TRP|TRIP|BOLT|UBER|LTL|FRS)-[A-Z0-9]*\d[A-Z0-9]*\b/gi,
+    /\btrip\s+(?:id|ref|reference|code|number)\s*[:#-]?\s*([A-Z0-9-]*\d[A-Z0-9-]*)\b/gi
   ]
   for (const pat of tripPatterns) {
     for (const m of text.matchAll(pat)) {
-      add('TRIP_ID', m[0])
+      add('TRIP_ID', m[1] || m[0])
     }
   }
 
@@ -393,7 +394,7 @@ export function classifyStory(narrative: string, noticeText?: string): {
     ]
   }
 
-  // Score mainly on driver's own narrative first
+  // Score strictly on driver's own narrative first; only use noticeText if narrative has no keywords at all
   for (const [cat, patterns] of Object.entries(rules)) {
     for (const [regex, weight] of patterns) {
       const matches = narrativeLower.match(regex)
@@ -403,13 +404,13 @@ export function classifyStory(narrative: string, noticeText?: string): {
     }
   }
 
-  // Add secondary weight from noticeText if narrative was very short
-  if (noticeText) {
+  const narrativeTotal = Object.values(scores).reduce((acc, v) => acc + v, 0)
+  if (narrativeTotal === 0 && noticeText) {
     const noticeLower = noticeText.toLowerCase()
-    if (noticeLower.includes('fare') || noticeLower.includes('payment')) scores.fare_dispute += 1.2
-    if (noticeLower.includes('safety') || noticeLower.includes('conduct')) scores.passenger_safety += 1.2
-    if (noticeLower.includes('cancellation') || noticeLower.includes('rating')) scores.rating_or_cancellation += 1.2
-    if (noticeLower.includes('fraud') || noticeLower.includes('identity') || noticeLower.includes('gps')) scores.fraud_flag += 1.2
+    if (noticeLower.includes('fare') || noticeLower.includes('payment')) scores.fare_dispute += 1.0
+    if (noticeLower.includes('safety') || noticeLower.includes('conduct')) scores.passenger_safety += 1.0
+    if (noticeLower.includes('cancellation') || noticeLower.includes('rating')) scores.rating_or_cancellation += 1.0
+    if (noticeLower.includes('fraud') || noticeLower.includes('identity') || noticeLower.includes('gps')) scores.fraud_flag += 1.0
   }
 
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1])
@@ -503,15 +504,23 @@ export function buildAppealDossier(params: {
   const amounts = entities.filter((e) => e.label === 'MONEY').map((e) => e.text)
   const tripIds = entities.filter((e) => e.label === 'TRIP_ID').map((e) => e.text)
 
-  const dateTimeStr = [dates[0], times[0]].filter(Boolean).join(' at ') || 'the date recorded in my trip log'
-  const routeStr =
-    locations.length >= 2
-      ? `from ${locations[0]} to ${locations[1]}`
-      : locations.length === 1
-        ? `around ${locations[0]}`
-        : 'along the GPS-logged route'
-  const amountStr = amounts[0] || 'the full metered trip fare'
-  const tripRefStr = tripIds[0] ? ` (Trip Reference: ${tripIds[0]})` : ''
+  // Only include facts the driver actually stated — never invent placeholders
+  const factFragments: string[] = []
+  if (dates.length > 0 || times.length > 0) {
+    factFragments.push(`on ${[dates[0], times[0]].filter(Boolean).join(' at ')}`)
+  }
+  if (locations.length >= 2) {
+    factFragments.push(`from ${locations[0]} to ${locations[1]}`)
+  } else if (locations.length === 1) {
+    factFragments.push(`in ${locations[0]}`)
+  }
+  if (amounts.length > 0) {
+    factFragments.push(`involving ${amounts[0]}`)
+  }
+  if (tripIds.length > 0) {
+    factFragments.push(`(Trip ID: ${tripIds[0]})`)
+  }
+  const tripContextClause = factFragments.length > 0 ? ` (${factFragments.join(', ')})` : ''
 
   const platRuleMap: Record<string, string> = {
     Bolt: 'POL-BOLT-12',
@@ -525,105 +534,104 @@ export function buildAppealDossier(params: {
   const heldLabels = checklist
     .filter((item) => evidenceHeld.includes(item.item_id))
     .map((item) => item.label)
-  const evidenceLine =
+  const evidenceParagraph =
     heldLabels.length > 0
-      ? `Attached / Held Corroborating Evidence: ${heldLabels.join(', ')}.`
-      : 'I am ready to provide my in-app trip logs, M-Pesa statement, and statutory PSV credentials upon human review.'
+      ? `\nSupporting Evidence Held by Driver:\n- ${heldLabels.join('\n- ')}\n`
+      : ''
 
   if (caseType === 'fare_dispute') {
     return {
-      headline: `FORMAL EARNINGS & FARE DISPUTE APPEAL — ${plat.toUpperCase()} (${amountStr})`,
+      headline: `FORMAL EARNINGS & FARE DISPUTE APPEAL — ${plat.toUpperCase()}${amounts[0] ? ` (${amounts[0]})` : ''}`,
       policy_rules: ['POL-NTSA-13', 'POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01', platRule],
       body: [
-        `Dear ${plat} Driver Support & Financial Review Team,`,
+        `Dear ${plat} Driver Support Team,`,
         ``,
-        `I am writing to formally request an earnings audit and manual fare adjustment regarding my trip on ${dateTimeStr} ${routeStr}${tripRefStr}, involving ${amountStr}.`,
+        `I am writing to formally request a review of my fare/earnings dispute${tripContextClause}.`,
         ``,
-        `Factual Summary of Incident:`,
-        `${narrative.trim()}`,
-        ``,
-        `${evidenceLine}`,
-        ``,
+        `Driver's Statement of Facts:`,
+        `"${narrative.trim()}"`,
+        evidenceParagraph,
         `Statutory & Policy Grounds:`,
-        `1. Under Regulation 13(1)(b) and Regulation 15(1) of the NTSA (Transport Network Companies, Owners, Drivers and Passengers) Regulations, 2022 (Legal Notice 120), drivers are entitled to transparent fare calculation, fair remuneration for distance and time driven, and due process on disputed trip earnings.`,
-        `2. Under Section 26 and Section 35 of the Kenya Data Protection Act, 2019, and the TAWU Grievance Protocol (POL-TAWU-01), I request a human audit of the GPS route telemetry and payment logs within the statutory resolution window.`,
+        `1. NTSA Legal Notice 120 of 2022, Regulation 13(1)(b) & Regulation 15(1): Guarantees transparent fare calculation and fair administrative review of disputed driver earnings.`,
+        `2. Kenya Data Protection Act 2019 (Sections 26 & 35) & TAWU Grievance Protocol (POL-TAWU-01): Requests human review of the trip record.`,
         ``,
         `Respectfully submitted,`,
         `${name}`
-      ].join('\n')
+      ]
+        .filter((line) => line !== '')
+        .join('\n\n')
     }
   }
 
   if (caseType === 'passenger_safety') {
     return {
-      headline: `FORMAL APPEAL AGAINST SAFETY / CONDUCT RESTRICTION — ${plat.toUpperCase()}`,
+      headline: `FORMAL APPEAL: SAFETY / CONDUCT REPORT — ${plat.toUpperCase()}`,
       policy_rules: ['POL-NTSA-15', 'POL-NTSA-18', 'POL-DPA-26', 'POL-TAWU-01', platRule],
       body: [
         `Dear ${plat} Trust & Safety Appeals Team,`,
         ``,
-        `I am writing to formally contest the temporary hold/deactivation placed on my driver account following a passenger report from a trip on ${dateTimeStr} ${routeStr}${tripRefStr}.`,
+        `I am writing to formally respond to the safety/conduct restriction on my driver account${tripContextClause}.`,
         ``,
-        `Driver Counter-Statement & Factual Account:`,
-        `${narrative.trim()}`,
-        ``,
-        `${evidenceLine}`,
-        ``,
+        `Driver's Statement of Facts:`,
+        `"${narrative.trim()}"`,
+        evidenceParagraph,
         `Statutory & Policy Grounds:`,
-        `1. Under Regulation 18(1)-(2) of the NTSA (Transport Network Companies) Regulations, 2022 (Legal Notice 120), licensed PSV drivers have a statutory duty to uphold road safety rules, passenger capacity limits, and lawful conduct.`,
-        `2. Under NTSA LN 120 Regulation 15(1) and Section 35 of the Kenya Data Protection Act, 2019, an uncorroborated or retaliatory passenger report should not result in unilateral deactivation without reviewing the driver's counter-statement and trip telemetry.`,
-        `3. In accordance with TAWU Grievance Protocol (POL-TAWU-01), I request immediate human review and reinstatement of my account within the 30-day statutory window.`,
+        `1. NTSA Legal Notice 120 of 2022, Regulation 15(1) & Regulation 18(1)-(2): Protects a licensed PSV driver's right to be heard prior to deactivation and upholds driver safety rules.`,
+        `2. Kenya Data Protection Act 2019 (Section 35) & TAWU Grievance Protocol (POL-TAWU-01): Requests human review of the driver's counter-statement before any permanent action.`,
         ``,
         `Respectfully submitted,`,
         `${name}`
-      ].join('\n')
+      ]
+        .filter((line) => line !== '')
+        .join('\n\n')
     }
   }
 
   if (caseType === 'rating_or_cancellation') {
     return {
-      headline: `FORMAL APPEAL AGAINST RATING / CANCELLATION DEACTIVATION — ${plat.toUpperCase()}`,
+      headline: `FORMAL APPEAL: RATING / CANCELLATION REVIEW — ${plat.toUpperCase()}`,
       policy_rules: ['POL-NTSA-15', 'POL-DPA-26', 'POL-TAWU-01', platRule],
       body: [
-        `Dear ${plat} Driver Operations & Quality Review Team,`,
+        `Dear ${plat} Driver Operations Team,`,
         ``,
-        `I am writing to formally appeal the restriction placed on my account due to automated cancellation rate or star-rating metrics following trips on ${dateTimeStr} ${routeStr}${tripRefStr}.`,
+        `I am writing to formally appeal the rating or cancellation penalty placed on my account${tripContextClause}.`,
         ``,
-        `Factual Context of Flagged Trips:`,
-        `${narrative.trim()}`,
-        ``,
-        `${evidenceLine}`,
-        ``,
+        `Driver's Statement of Facts:`,
+        `"${narrative.trim()}"`,
+        evidenceParagraph,
         `Statutory & Policy Grounds:`,
-        `1. Under Regulation 15(1) of the NTSA (Transport Network Companies) Regulations, 2022 (Legal Notice 120), drivers are protected against arbitrary deactivation where cancellations or unfair ratings arise from inaccurate pickup pins, passenger-initiated cancellation requests, or external traffic conditions.`,
-        `2. Under Section 35 of the Kenya Data Protection Act, 2019 (Right Not to Be Subject to Automated Decision-Making), I request a human review of my in-app chat logs, pickup GPS coordinates, and historical service record in line with TAWU Protocol (POL-TAWU-01).`,
+        `1. NTSA Legal Notice 120 of 2022, Regulation 15(1): Protects drivers against unfair deactivation without due process.`,
+        `2. Kenya Data Protection Act 2019 (Section 35) & TAWU Grievance Protocol (POL-TAWU-01): Requests human review of automated rating or cancellation penalties.`,
         ``,
         `Respectfully submitted,`,
         `${name}`
-      ].join('\n')
+      ]
+        .filter((line) => line !== '')
+        .join('\n\n')
     }
   }
 
   // Default / fraud_flag
   return {
-    headline: `FORMAL APPEAL AGAINST ALGORITHMIC FRAUD / GPS FLAG — ${plat.toUpperCase()}`,
+    headline: `FORMAL APPEAL: ACCOUNT / ALGORITHMIC FLAG REVIEW — ${plat.toUpperCase()}`,
     policy_rules: ['POL-NTSA-15', 'POL-NTSA-21', 'POL-DPA-26', 'POL-TAWU-01', platRule],
     body: [
-      `Dear ${plat} Account Integrity & Compliance Review Team,`,
+      `Dear ${plat} Account Integrity & Appeals Team,`,
       ``,
-      `I am writing to formally appeal the automated fraud, GPS, or identity flag placed on my driver account following trips on ${dateTimeStr} ${routeStr}${tripRefStr}.`,
+      `I am writing to formally appeal the automated flag or restriction placed on my driver account${tripContextClause}.`,
       ``,
-      `Factual Explanation & Telemetry Context:`,
-      `${narrative.trim()}`,
-      ``,
-      `${evidenceLine}`,
-      ``,
+      `Driver's Statement of Facts:`,
+      `"${narrative.trim()}"`,
+      evidenceParagraph,
       `Statutory & Policy Grounds:`,
-      `1. Under Section 26 and Section 35 of the Kenya Data Protection Act, 2019, I exercise my statutory right to contest a solely automated algorithmic decision and request human verification of the underlying cell-tower, GPS, and payment telemetry.`,
-      `2. Under Regulation 15(1) and Regulation 21 of the NTSA (Transport Network Companies) Regulations, 2022 (Legal Notice 120), and TAWU Grievance Protocol (POL-TAWU-01), I affirm that I am the sole licensed operator of my account and request formal reinstatement following manual review.`,
+      `1. Kenya Data Protection Act 2019 (Sections 26 & 35): Exercises the statutory right to human review of a solely automated decision.`,
+      `2. NTSA Legal Notice 120 of 2022, Regulation 15(1) & TAWU Grievance Protocol (POL-TAWU-01): Requests manual verification of account records and reinstatement.`,
       ``,
       `Respectfully submitted,`,
       `${name}`
-    ].join('\n')
+    ]
+      .filter((line) => line !== '')
+      .join('\n\n')
   }
 }
 
