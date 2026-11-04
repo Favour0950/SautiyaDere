@@ -5,4 +5,5 @@ anthropic>=1,<2  # pin to the installed version after first install
 spacy==3.8.18
 presidio-analyzer==2.2.366
 africastalking==2.0.2
+setfit>=1.0.0
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
