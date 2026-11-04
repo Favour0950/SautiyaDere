@@ -154,12 +154,16 @@ python scripts/check_ai_key.py
 
 ## Deploy to Cloud Run (T10)
 
-Needs the gcloud CLI and a GCP project with billing on.
+Needs the gcloud CLI, a GCP project with billing on, and an Artifact Registry Docker repository called `sauti` in `europe-west1` (create it once with `gcloud artifacts repositories create sauti --repository-format=docker --location=europe-west1`).
+
+The image needs files from `data/` as well as `api/`, so it is built from the repo root. `gcloud run deploy --source` cannot do that, so build first, then deploy the image. Run both from the repo root:
 
 ```bash
-cd api
-gcloud run deploy sauti-api --source . --region europe-west1 \
-  --memory 2Gi --allow-unauthenticated \
+gcloud builds submit --config api/cloudbuild.yaml .
+
+gcloud run deploy sauti-api \
+  --image europe-west1-docker.pkg.dev/<project-id>/sauti/sauti-api:latest \
+  --region europe-west1 --memory 2Gi --allow-unauthenticated \
   --set-env-vars CORS_ORIGINS=https://<pages-domain> \
   --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest
 ```
@@ -168,8 +172,11 @@ Keep the key in Secret Manager (`anthropic-api-key`), never in `--set-env-vars`.
 
 ## Docker
 
+Build from the repo root, not from `api/`, so `data/` can go into the image:
+
 ```bash
-cd api
-docker build -t sauti-api .
-docker run -p 8080:8080 --env-file .env sauti-api
+docker build -f api/Dockerfile -t sauti-api .
+docker run -p 8080:8080 --env-file api/.env sauti-api
 ```
+
+`.dockerignore` at the repo root lists the only files Docker may see: `api/requirements.txt`, `api/app/`, and the `.json` and `.py` files directly in `data/`. Real cases (`data/real/`), synthetic sets, `.env` files and the front end never go into the image. If the API starts needing a new kind of file, add it there.

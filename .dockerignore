@@ -1,0 +1,13 @@
+# The API image is built from the repo root (see docs/api.md), so it can
+# include data/. Everything is left out except what the API needs at runtime.
+# Listing what goes in, rather than what stays out, means real driver data
+# (data/real/), .env files and the front end can never end up in the image.
+*
+
+!api/requirements.txt
+!api/app/
+!data/*.json
+!data/*.py
+
+**/__pycache__
+**/*.py[cod]
