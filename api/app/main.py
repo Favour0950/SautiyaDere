@@ -11,7 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import settings
-from .schemas import AnalyzeRequest, AnalyzeResponse, HealthResponse
+from .schemas import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    HealthResponse,
+    SmsReminderRequest,
+    SmsReminderResponse,
+)
+from .services.sms import send_timeline_reminder
 
 app = FastAPI(title="Sauti ya Dere API", version="0.1.0")
 api_router = APIRouter(prefix="/api")
@@ -45,6 +52,17 @@ def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     # Stub. The real pipeline (filter, extraction, case type, gap checker,
     # appeal statement) is joined here in T31.
     return AnalyzeResponse()
+
+
+@api_router.post("/notify/sms", response_model=SmsReminderResponse)
+@app.post("/notify/sms", response_model=SmsReminderResponse)
+def notify_sms(body: SmsReminderRequest) -> SmsReminderResponse:
+    result = send_timeline_reminder(
+        phone_number=body.phone_number,
+        case_ref=body.case_ref,
+        days_remaining=body.days_remaining,
+    )
+    return SmsReminderResponse(**result)
 
 
 app.include_router(api_router)

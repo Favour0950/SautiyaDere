@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": [
+    "/assets/*",
+    "/manifest.json",
+    "/_redirects",
+    "/apple-icon.png",
+    "/icon-dark-32x32.png",
+    "/icon-light-32x32.png",
+    "/icon.svg"
+  ]
+}

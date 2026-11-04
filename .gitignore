@@ -15,6 +15,7 @@ venv/
 node_modules/
 dist/
 .vite/
+models/sauti_setfit_model/
 
 # Models and notebooks output
 models/**/*.bin

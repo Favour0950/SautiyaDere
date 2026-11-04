@@ -19,7 +19,8 @@ import {
   ShieldCheck,
   Upload,
   X,
-  Edit2
+  Edit2,
+  Plus
 } from 'lucide-react'
 import {
   getLocalProfile,
@@ -27,6 +28,8 @@ import {
   saveCase,
   getAllCases
 } from '../../db/db.js'
+import { generateAppealPdf } from '../../utils/pdfGenerator.js'
+import { getApiUrl } from '../../config.js'
 
 const steps = ['Notice & Platform', 'Incident Details', 'Case Verification', 'Evidence Audit', 'Appeal Dossier']
 
@@ -48,14 +51,14 @@ export interface MissingItem {
 }
 
 export interface EvidenceData {
-  readiness: number
+  readiness?: number | null
   missing: MissingItem[]
   optional: string[]
 }
 
 export interface ClassificationData {
   case_type: string
-  confidence: number
+  confidence?: number | null
   confidence_threshold?: number
   needs_confirmation?: boolean
 }
@@ -444,24 +447,31 @@ function Intake({
   )
 }
 
-/* Screen 3: Chat & Backend Analysis (Task T24/T26 integration) */
+/* Screen 3: Chat / Story Input (Task T26 & User Input Update) */
 function Chat({
   go,
   menu,
+  narrative,
+  onChangeNarrative,
   onAnalyze,
-  narrative
+  evidenceHeld
 }: {
   go: (n: number) => void
   menu: () => void
-  onAnalyze: () => Promise<void>
   narrative: string
+  onChangeNarrative: (text: string) => void
+  onAnalyze: (customNarrative?: string) => Promise<void>
+  evidenceHeld: string[]
 }) {
+  const [driverInput, setDriverInput] = useState(narrative || '')
   const [processing, setProcessing] = useState(false)
 
   const review = async () => {
+    const textToAnalyze = driverInput.trim()
+    onChangeNarrative(textToAnalyze)
     setProcessing(true)
     try {
-      await onAnalyze()
+      await onAnalyze(textToAnalyze)
       go(4)
     } finally {
       setProcessing(false)
@@ -472,82 +482,134 @@ function Chat({
     <>
       <Header step={steps[1]} onMenu={menu} onBack={() => go(2)} />
       <main className="flex flex-1 flex-col px-5 py-5">
-        <div className="mb-5 flex items-center gap-2 text-xs text-slate-500">
-          <div className="flex size-8 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A]">
-            <Scale size={15} />
+        <div className="mb-4 flex items-center justify-between text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A]">
+              <Scale size={15} />
+            </div>
+            <span className="font-bold text-slate-700">DereBot • Plain English Guidance</span>
           </div>
-          <span>DereBot • Plain English Guidance</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            Step 2 of 5
+          </span>
         </div>
-        <div className="flex flex-1 flex-col gap-4">
-          <p className="max-w-[295px] rounded-2xl rounded-tl-sm bg-[#EEF2F4] p-4 text-sm leading-6">
-            When did the disputed trip happen?
-          </p>
-          <p className="self-end rounded-2xl rounded-tr-sm bg-[#1E5E3A] p-4 text-sm leading-6 text-white">
-            14 May around 4:30pm <span className="ml-2 text-[10px] text-white/70">4:31pm</span>
-          </p>
-          <p className="max-w-[295px] rounded-2xl rounded-tl-sm bg-[#EEF2F4] p-4 text-sm leading-6">
-            Where was the pickup and drop-off?
-          </p>
-          <p className="self-end rounded-2xl rounded-tr-sm bg-[#1E5E3A] p-4 text-sm leading-6 text-white">
-            Westlands to JKIA. The passenger said the fare was too high.
-          </p>
-          <p className="max-w-[295px] rounded-2xl rounded-tl-sm bg-[#EEF2F4] p-4 text-sm leading-6">
-            What caused the disagreement with the passenger?
-          </p>
-        </div>
-        <div className="mt-5 flex items-center gap-2">
-          <button
-            aria-label="Attach file"
-            className="flex size-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500"
-          >
-            <Paperclip />
-          </button>
-          <button
-            aria-label="Record voice note"
-            className="flex size-12 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A]"
-          >
-            <Mic />
-          </button>
-          <div className="flex min-h-12 flex-1 items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-400">
-            Type your answer…
-            <Send className="text-[#1E5E3A]" />
+
+        {/* Conversation and narrative display */}
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-3">
+          <div className="flex items-start gap-2.5">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A] mt-0.5">
+              <Scale size={13} />
+            </div>
+            <div className="max-w-[290px] rounded-2xl rounded-tl-sm bg-[#EEF2F4] p-3.5 text-xs leading-5 text-slate-800">
+              Tell me what happened in your own words. Mention:
+              <ul className="mt-1 list-disc pl-4 space-y-0.5 text-slate-600">
+                <li>When the trip occurred (date &amp; time)</li>
+                <li>Pickup and destination locations</li>
+                <li>What caused the dispute or account flag</li>
+              </ul>
+            </div>
           </div>
-        </div>
-        <div className="mt-4">
-          {processing && (
-            <p className="mb-3 rounded-xl bg-[#FFF7ED] p-3 text-xs font-bold text-[#A34F00]">
-              🛡️ Removing phone numbers &amp; analyzing trip details...
-            </p>
+
+          {driverInput.trim() && (
+            <div className="self-end max-w-[290px] rounded-2xl rounded-tr-sm bg-[#1E5E3A] p-3.5 text-xs leading-5 text-white shadow-xs">
+              <p className="whitespace-pre-wrap">{driverInput}</p>
+            </div>
           )}
-          <Btn onClick={review} disabled={processing}>
-            {processing ? 'Analyzing…' : 'Review Extracted Facts'} {!processing && <ArrowRight />}
-          </Btn>
         </div>
+
+        {/* Dynamic Story Input Area */}
+        <div className="flex flex-col gap-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs focus-within:border-[#1E5E3A] focus-within:ring-1 focus-within:ring-[#1E5E3A]">
+            <textarea
+              value={driverInput}
+              onChange={(e) => {
+                setDriverInput(e.target.value)
+                onChangeNarrative(e.target.value)
+              }}
+              placeholder="Type your story here (e.g., On 14 May around 4:30pm from Westlands to JKIA, passenger said the fare was too high...)"
+              rows={4}
+              className="w-full resize-none bg-transparent text-xs leading-5 text-[#0F172A] placeholder-slate-400 outline-none"
+            />
+            <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400">
+              <span>{driverInput.trim().length} characters</span>
+              <span className="flex items-center gap-1 font-semibold text-[#1E5E3A]">
+                <ShieldCheck size={12} /> Stored on-device
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Attach evidence"
+              className="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+            >
+              <Paperclip size={18} />
+            </button>
+            <button
+              type="button"
+              aria-label="Voice note"
+              className="flex size-11 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A] hover:bg-[#D5EADB]"
+            >
+              <Mic size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={review}
+              disabled={processing || !driverInput.trim()}
+              className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-xs font-extrabold transition ${
+                !driverInput.trim()
+                  ? 'border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-[#1E5E3A] text-white hover:bg-[#174A2E] shadow-xs'
+              }`}
+            >
+              {processing ? 'Analyzing…' : 'Review Extracted Facts'} {!processing && <ArrowRight size={14} />}
+            </button>
+          </div>
+        </div>
+
+        {processing && (
+          <p className="mt-3 rounded-xl bg-[#FFF7ED] p-2.5 text-center text-xs font-bold text-[#A34F00]">
+            🛡️ Removing phone numbers &amp; analyzing trip details...
+          </p>
+        )}
       </main>
       <Footer />
     </>
   )
 }
 
-/* Screen 4: Verify (Task T26 integration) */
+/* Screen 4: Verify (Task T26 & Dynamic Facts Update) */
 function Verify({
   go,
   menu,
   analysis,
   onUpdateEntity,
+  onAddEntity,
+  onDeleteEntity,
   onSelectCaseType
 }: {
   go: (n: number) => void
   menu: () => void
   analysis: AnalysisResult
   onUpdateEntity: (index: number, newText: string) => void
+  onAddEntity: (entity: EntityItem) => void
+  onDeleteEntity: (index: number) => void
   onSelectCaseType: (t: string) => void
 }) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [isAddingFact, setIsAddingFact] = useState(false)
+  const [newFactLabel, setNewFactLabel] = useState('DATE')
+  const [newFactText, setNewFactText] = useState('')
 
-  const confidencePct = Math.round((analysis.classification.confidence ?? 0.89) * 100)
-  const currentCaseType = analysis.classification.case_type || 'fare_dispute'
+  const currentCaseType = analysis.classification.case_type || ''
+  const hasPrediction = Boolean(
+    currentCaseType &&
+    analysis.classification.confidence !== null &&
+    analysis.classification.confidence !== undefined
+  )
+  const confidencePct = hasPrediction ? Math.round(Number(analysis.classification.confidence) * 100) : null
 
   const handleStartEdit = (index: number, currentText: string) => {
     setEditingIndex(index)
@@ -561,6 +623,17 @@ function Verify({
     setEditingIndex(null)
   }
 
+  const handleSaveNewFact = () => {
+    if (newFactText.trim()) {
+      onAddEntity({
+        label: newFactLabel.toUpperCase(),
+        text: newFactText.trim()
+      })
+      setNewFactText('')
+      setIsAddingFact(false)
+    }
+  }
+
   return (
     <>
       <Header step={steps[2]} onMenu={menu} onBack={() => go(3)} />
@@ -569,26 +642,54 @@ function Verify({
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Inversion test</p>
           <h1 className="mt-2 text-2xl font-black">Does this look right?</h1>
         </div>
-        <div className="rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-base font-black">{formatCaseType(currentCaseType)}</p>
-              <p className="mt-1 text-xs text-slate-500">Our reading of your story</p>
-            </div>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#1E5E3A]">
-              {confidencePct}% confidence
-            </span>
-          </div>
-          <div className="mt-4 h-1.5 rounded-full bg-[#CDE5D4]">
-            <div
-              className="h-full rounded-full bg-[#1E5E3A]"
-              style={{ width: `${Math.min(100, Math.max(10, confidencePct))}%` }}
-            />
-          </div>
-        </div>
 
+        {/* Dynamic Case Classification Card */}
+        {hasPrediction ? (
+          <div className="rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-base font-black text-[#0F172A]">{formatCaseType(currentCaseType)}</p>
+                <p className="mt-1 text-xs text-slate-500">Our reading of your story</p>
+              </div>
+              {confidencePct !== null && (
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#1E5E3A] shadow-xs">
+                  {confidencePct}% confidence
+                </span>
+              )}
+            </div>
+            {confidencePct !== null && (
+              <div className="mt-4 h-1.5 rounded-full bg-[#CDE5D4]">
+                <div
+                  className="h-full rounded-full bg-[#1E5E3A]"
+                  style={{ width: `${Math.min(100, Math.max(10, confidencePct))}%` }}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-amber-200 bg-[#FFF7ED] p-4 text-amber-950">
+            <div className="flex items-start gap-2.5">
+              <span className="text-base leading-none mt-0.5">⚠️</span>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-[#A34F00]">
+                  Classification Needed
+                </p>
+                <p className="mt-1 text-sm font-extrabold text-[#0F172A]">
+                  Please select the dispute category that best matches your situation.
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  DereBot needs your dispute category to evaluate required evidence and formulate statutory appeal grounds.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Dispute Category Selection */}
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 text-sm font-bold">Not right? Select the actual issue:</legend>
+          <legend className="mb-1 text-sm font-bold text-[#0F172A]">
+            {hasPrediction ? 'Not right? Select the actual issue:' : 'Dispute categories:'}
+          </legend>
           {[
             { label: 'Passenger Complaint', value: 'passenger_safety' },
             { label: 'Fare Dispute', value: 'fare_dispute' },
@@ -600,7 +701,7 @@ function Verify({
               className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 text-sm transition ${
                 currentCaseType === item.value
                   ? 'border-[#1E5E3A] bg-[#F1F9F3] font-bold text-[#1E5E3A]'
-                  : 'border-slate-200 bg-white text-slate-700'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
               <input
@@ -615,6 +716,7 @@ function Verify({
           ))}
         </fieldset>
 
+        {/* Extracted Facts with Empty-State & Add Fact */}
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-400">
             Extracted facts · click pencil to edit
@@ -665,7 +767,12 @@ function Verify({
         </div>
 
         <div className="mt-auto">
-          <Btn onClick={() => go(5)}>
+          <Btn onClick={() => {
+            if (!currentCaseType) {
+              onSelectCaseType('fare_dispute')
+            }
+            go(5)
+          }}>
             Confirm &amp; Check Evidence <ArrowRight />
           </Btn>
         </div>
@@ -769,30 +876,72 @@ function Evidence({
   )
 }
 
-/* Screen 6: Preview & Dossier Persistence (Task T26 integration) */
+/* Screen 6: Preview & Dossier Persistence (Task T26 & T35 integration) */
 function Preview({
   go,
   menu,
   analysis,
   platform,
+  profile,
+  narrative,
+  evidenceHeld,
   onSaveDossier
 }: {
   go: (n: number) => void
   menu: () => void
   analysis: AnalysisResult
   platform: string
+  profile: ProfileData
+  narrative: string
+  evidenceHeld: string[]
   onSaveDossier: () => Promise<void>
 }) {
   const [copied, setCopied] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [pdfSuccess, setPdfSuccess] = useState(false)
 
-  const headline = analysis.appeal.headline || `Appeal against account restriction: ${platform} Dispute`
-  const bodyText = analysis.appeal.body || 'Appeal statement body...'
+  const headline =
+    analysis.appeal.headline ||
+    `Appeal against account restriction: ${platform} Dispute`
+
+  const bodyText =
+    analysis.appeal.body ||
+    (narrative.trim()
+      ? `Dear ${platform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my driver account regarding the following incident:\n\n"${narrative.trim()}"\n\nPlease review the attached evidence and the facts recorded on my device. In accordance with NTSA Legal Notice 120 Regulation 15 and Kenya Data Protection Act 2019 Section 26, I respectfully request a fair hearing and prompt resolution within the 30-day statutory timeline.\n\nKind regards,\n${profile.name || 'Authorized Driver'}`
+      : `Dear ${platform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my driver account. Please review my account records and attached corroborating evidence in accordance with NTSA Legal Notice 120 Regulation 15.\n\nKind regards,\n${profile.name || 'Authorized Driver'}`)
 
   const handleCopy = () => {
     navigator.clipboard?.writeText?.(`${headline}\n\n${bodyText}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleDownloadPdf = async () => {
+    setGeneratingPdf(true)
+    try {
+      await generateAppealPdf({
+        driverProfile: profile,
+        caseData: {
+          platform: platform || profile.platform || 'Bolt',
+          narrative,
+          entities: analysis.entities,
+          evidence_held: evidenceHeld
+        },
+        appealDossier: {
+          headline,
+          statement_body: bodyText,
+          policy_rules: analysis.appeal.policy_rules,
+          evidence_held: evidenceHeld
+        }
+      })
+      setPdfSuccess(true)
+      setTimeout(() => setPdfSuccess(false), 3000)
+    } catch (err) {
+      console.error('Failed to generate appeal PDF:', err)
+    } finally {
+      setGeneratingPdf(false)
+    }
   }
 
   const handleFinalSave = async () => {
@@ -829,8 +978,8 @@ function Preview({
           <Btn secondary onClick={handleCopy}>
             <Clipboard size={16} /> {copied ? 'Copied!' : 'Copy Text'}
           </Btn>
-          <Btn secondary>
-            <Download size={16} /> Download PDF
+          <Btn secondary onClick={handleDownloadPdf} disabled={generatingPdf}>
+            <Download size={16} /> {generatingPdf ? 'Generating…' : pdfSuccess ? 'Downloaded!' : 'Download 1-Page PDF'}
           </Btn>
         </div>
         <Btn secondary onClick={handleFinalSave}>
@@ -1064,15 +1213,18 @@ export default function Page() {
   // 2. Active Case State
   const [casePlatform, setCasePlatform] = useState('Bolt')
   const [noticeText, setNoticeText] = useState('Fare or payment dispute')
-  const narrative = '14 May around 4:30pm. Westlands to JKIA. The passenger said the fare was too high.'
-  const evidenceHeld = ['SUSPENSION_NOTICE', 'TRIP_RECEIPT_SCREENSHOT']
+  const [narrative, setNarrative] = useState('')
+  const [evidenceHeld, setEvidenceHeld] = useState<string[]>([
+    'SUSPENSION_NOTICE',
+    'TRIP_RECEIPT_SCREENSHOT'
+  ])
 
-  // 3. Analysis Result from Backend (Task T24/T26)
+  // 3. Analysis Result from Backend (Task T24/T26 & Dynamic Update)
   const [analysis, setAnalysis] = useState<AnalysisResult>({
     classification: {
-      case_type: 'fare_dispute',
-      confidence: 0.89,
-      needs_confirmation: false
+      case_type: '',
+      confidence: null,
+      needs_confirmation: true
     },
     // Facts and missing evidence start empty and only ever come from the API.
     // Sample values here would reach the driver's appeal as if they were theirs.
@@ -1083,9 +1235,9 @@ export default function Page() {
       optional: []
     },
     appeal: {
-      headline: 'Formal Appeal: Contested Fare Dispute on 14 May',
-      body: `Dear Bolt Driver Support,\n\nI am writing to request a fair review of my account suspension related to a Fare & Payment Dispute on 14 May at approximately 4:30 PM. The trip travelled from Westlands to JKIA, with a fare of KSh 1,250.\n\nPlease review the attached evidence and provide the reasons and records relied upon. I respectfully request reinstatement while this matter is reviewed under NTSA Legal Notice 120 and the platform's fair process obligations.\n\nKind regards,\nMwangi`,
-      policy_rules: ['POL-NTSA-13', 'POL-NTSA-15', 'POL-BOLT-12', 'POL-BOLT-13']
+      headline: '',
+      body: '',
+      policy_rules: []
     }
   })
 
@@ -1142,17 +1294,27 @@ export default function Page() {
     }
   }
 
-  // Orchestrate Backend API call to /api/analyze (Task T24/T26)
-  const handleAnalyze = async () => {
+  // Orchestrate Backend API call to /api/analyze (Task T24/T26 & Dynamic User Story)
+  const handleAnalyze = async (overrideNarrative?: string) => {
+    const textToAnalyze = (overrideNarrative !== undefined ? overrideNarrative : narrative).trim()
+    if (textToAnalyze && textToAnalyze !== narrative) {
+      setNarrative(textToAnalyze)
+    }
+
     const payload = {
-      narrative: narrative,
+      narrative: textToAnalyze || 'Dispute regarding account suspension.',
       platform: casePlatform || 'Bolt',
       notice_text: noticeText || 'Fare or payment dispute',
       evidence_held: evidenceHeld
     }
 
     try {
-      const endpoints = ['/api/analyze', 'http://localhost:8000/api/analyze']
+      const configuredEndpoint = getApiUrl('/api/analyze')
+      const endpoints = Array.from(new Set([
+        configuredEndpoint,
+        '/api/analyze',
+        'http://localhost:8000/api/analyze'
+      ]))
       let resData: any = null
 
       for (const url of endpoints) {
@@ -1174,8 +1336,8 @@ export default function Page() {
       if (resData) {
         setAnalysis((prev) => ({
           classification: {
-            case_type: resData.classification?.case_type || prev.classification.case_type,
-            confidence: resData.classification?.confidence ?? prev.classification.confidence,
+            case_type: resData.classification?.case_type || prev.classification.case_type || '',
+            confidence: resData.classification?.confidence ?? prev.classification.confidence ?? null,
             needs_confirmation: resData.classification?.needs_confirmation ?? prev.classification.needs_confirmation
           },
           // An empty list from the API means "none found": show it as empty.
@@ -1186,9 +1348,9 @@ export default function Page() {
             optional: resData.evidence?.optional ?? prev.evidence.optional
           },
           appeal: {
-            headline: resData.appeal?.headline || prev.appeal.headline,
-            body: resData.appeal?.body || prev.appeal.body,
-            policy_rules: resData.appeal?.policy_rules || prev.appeal.policy_rules
+            headline: resData.appeal?.headline || prev.appeal.headline || (textToAnalyze ? `Appeal against account restriction: ${casePlatform} Dispute` : ''),
+            body: resData.appeal?.body || prev.appeal.body || (textToAnalyze ? `Dear ${casePlatform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my account regarding the following incident:\n\n"${textToAnalyze}"\n\nPlease review the attached evidence and the facts recorded on my device. In accordance with NTSA Legal Notice 120 Regulation 15 and Kenya Data Protection Act 2019 Section 26, I respectfully request a fair hearing and prompt resolution within the 30-day statutory timeline.\n\nKind regards,\n${profile.name || 'Authorized Driver'}` : ''),
+            policy_rules: resData.appeal?.policy_rules || prev.appeal.policy_rules || []
           }
         }))
       }
@@ -1208,13 +1370,32 @@ export default function Page() {
     })
   }
 
+  // Add new entity manually
+  const handleAddEntity = (entity: EntityItem) => {
+    setAnalysis((prev) => ({
+      ...prev,
+      entities: [...prev.entities, entity]
+    }))
+  }
+
+  // Delete entity manually
+  const handleDeleteEntity = (index: number) => {
+    setAnalysis((prev) => {
+      const next = [...prev.entities]
+      next.splice(index, 1)
+      return { ...prev, entities: next }
+    })
+  }
+
   // Override case type
   const handleSelectCaseType = (t: string) => {
     setAnalysis((prev) => ({
       ...prev,
       classification: {
         ...prev.classification,
-        case_type: t
+        case_type: t,
+        confidence: prev.classification.confidence ?? 1.0,
+        needs_confirmation: false
       }
     }))
   }
@@ -1227,11 +1408,11 @@ export default function Page() {
         case_type: analysis.classification.case_type || 'fare_dispute',
         status: 'Awaiting Platform Reply',
         created_at: new Date().toISOString(),
-        narrative: narrative,
+        narrative: narrative || 'Driver dispute submission.',
         evidence_held: evidenceHeld,
         appeal_dossier: {
-          headline: analysis.appeal.headline,
-          statement_body: analysis.appeal.body,
+          headline: analysis.appeal.headline || `Appeal: ${casePlatform} Dispute`,
+          statement_body: analysis.appeal.body || narrative || 'Appeal statement body',
           policy_rules: analysis.appeal.policy_rules
         }
       })
@@ -1257,13 +1438,24 @@ export default function Page() {
               onChangeNotice={setNoticeText}
             />
           )}
-          {screen === 3 && <Chat go={go} menu={menu} onAnalyze={handleAnalyze} narrative={narrative} />}
+          {screen === 3 && (
+            <Chat
+              go={go}
+              menu={menu}
+              onAnalyze={handleAnalyze}
+              narrative={narrative}
+              onChangeNarrative={setNarrative}
+              evidenceHeld={evidenceHeld}
+            />
+          )}
           {screen === 4 && (
             <Verify
               go={go}
               menu={menu}
               analysis={analysis}
               onUpdateEntity={handleUpdateEntity}
+              onAddEntity={handleAddEntity}
+              onDeleteEntity={handleDeleteEntity}
               onSelectCaseType={handleSelectCaseType}
             />
           )}
@@ -1281,6 +1473,9 @@ export default function Page() {
               menu={menu}
               analysis={analysis}
               platform={casePlatform}
+              profile={profile}
+              narrative={narrative}
+              evidenceHeld={evidenceHeld}
               onSaveDossier={handleSaveDossier}
             />
           )}
