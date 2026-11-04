@@ -60,124 +60,125 @@ export interface LocalAnalysisOutput {
 }
 
 // 1. Complete Evidence Checklists from data/checklists.json (T07)
+// Refined with Human-Computer Interaction (HCI) plain-language labels & concise practical descriptions
 export const CASE_CHECKLISTS: Record<string, ChecklistItemSpec[]> = {
   fare_dispute: [
     {
       item_id: 'TRIP_RECEIPT_SCREENSHOT',
-      label: 'Trip ID & In-App Receipt Screenshot',
+      label: 'Trip Receipt Screenshot (from Bolt / Uber / Little)',
       source: 'NTSA LN 120 Reg 12(4) & Platform Terms',
-      reason: 'Shows the official Trip ID, upfront fare breakdown, and distance/duration recorded by the app.',
+      reason: 'Shows the Trip ID, route distance, and fare calculated by the app.',
       required: true
     },
     {
       item_id: 'MPESA_STATEMENT',
-      label: 'M-Pesa Statement / Cash Payment Confirmation',
+      label: 'M-Pesa Message or Payment Proof',
       source: 'TAWU Financial Dispute Checklist & Platform Earnings Policy',
-      reason: 'An M-Pesa Statement provides verifiable proof of the exact digital payment received or non-payment for contested trip fares.',
+      reason: 'Proves the exact M-Pesa payment received (or that no payment was sent).',
       required: true
     },
     {
       item_id: 'GPS_ROUTE_LOG',
-      label: 'GPS Route & Google Maps Timeline Log',
+      label: 'Google Maps Timeline / Route Screenshot',
       source: 'TAWU Appeal Best Practice & Platform Distance Dispute Terms',
-      reason: 'Confirms the actual route driven and traffic delays when the final fare differs from the upfront estimate.',
+      reason: 'Shows the actual road driven and traffic delays if the fare was undercalculated.',
       required: false
     },
     {
       item_id: 'IN_APP_CHAT_SCREENSHOT',
-      label: 'In-App Chat / Customer Call Screenshot',
+      label: 'Passenger Chat or Call Log Screenshot',
       source: 'TAWU Grievance Protocol (Fare Agreement)',
-      reason: 'Documents any in-app messages where the passenger agreed to a route change, stop, or cash/M-Pesa payment.',
+      reason: 'Shows if the rider asked for extra stops, a route change, or promised to pay.',
       required: false
     }
   ],
   passenger_safety: [
     {
       item_id: 'INCIDENT_TIMESTAMP_LOG',
-      label: 'Incident Details & Exact Timestamp Log',
+      label: 'Exact Time & Place of the Incident',
       source: 'NTSA LN 120 Reg 11(e) & Reg 18(2)',
-      reason: 'Incident Details and exact timestamps allow platform safety teams to match your report against trip telemetry under NTSA Reg 18(2).',
+      reason: 'Helps platform support match your report with the exact trip GPS record.',
       required: true
     },
     {
       item_id: 'POLICE_ABSTRACT',
-      label: 'Official Police Abstract (if crash, injury, or assault occurred)',
+      label: 'Police OB Number or Abstract (if reported to police)',
       source: 'NTSA LN 120 Reg 11(b) & TAWU Safety Protocol',
-      reason: 'Mandatory legal documentation for reporting physical threats, accidents, or criminal behavior under NTSA rules.',
+      reason: 'Official police record if there was a threat, assault, damage, or accident.',
       required: true
     },
     {
       item_id: 'DASHCAM_FOOTAGE',
-      label: 'Dashcam Footage (Audio/Video Log)',
+      label: 'Dashcam or Phone Audio/Video Clip',
       source: 'NTSA LN 120 Reg 18(1) & Platform Safety Guidelines',
-      reason: 'Serves as objective visual and audio evidence to clear false passenger or safety allegations.',
+      reason: 'Clears false passenger accusations using actual audio or video from the trip.',
       required: false
     },
     {
       item_id: 'WITNESS_STATEMENT',
-      label: 'Third-Party / Security Guard / Witness Statement',
+      label: 'Witness or Stage Guard Confirmation',
       source: 'TAWU Incident Defense Protocol',
-      reason: 'Corroborates your account using an independent observer such as a stage marshal, estate guard, or bystander.',
+      reason: 'Supports your story if a security guard, stage marshal, or bystander saw what happened.',
       required: false
     }
   ],
   rating_or_cancellation: [
     {
       item_id: 'IN_APP_CHAT_SCREENSHOT',
-      label: 'In-App Conversation / Call Activity Screenshot',
+      label: 'In-App Chat or Call Log with Passenger',
       source: 'Platform Community Guidelines & TAWU Note',
-      reason: 'Shows polite communication, pickup pin mismatches, or rider requests to cancel before the dispute occurred.',
+      reason: 'Shows wrong pickup pins, waiting time, or the rider asking you to cancel.',
       required: true
     },
     {
       item_id: 'DRIVER_COUNTER_STATEMENT',
-      label: 'Written Driver Counter-Statement',
+      label: 'Your Written Explanation of What Happened',
       source: 'NTSA LN 120 Reg 15 Due Process Mandate',
-      reason: 'Exercises your statutory right to be heard under NTSA Reg 15(1) by recording your factual version of the interaction.',
+      reason: 'Records your side of the story as required under NTSA fair-hearing rules.',
       required: true
     },
     {
       item_id: 'DASHCAM_FOOTAGE',
-      label: 'Dashcam Clip Showing Interaction',
+      label: 'Dashcam Clip of the Trip (if available)',
       source: 'TAWU Appeals Standard',
-      reason: 'Serves as objective visual and audio evidence to clear false passenger or safety allegations.',
+      reason: 'Clears unfair 1-star ratings or false complaints with direct video proof.',
       required: false
     },
     {
       item_id: 'DRIVER_RATING_HISTORY',
-      label: 'Historical Driver Star Rating & Compliment History',
+      label: 'Your Driver Profile & Star Rating Screenshot',
       source: 'Uber / Bolt / Yego Quality Review Terms',
-      reason: 'Demonstrates a consistent track record of safe, professional service prior to an isolated retaliatory rating.',
+      reason: 'Shows your strong track record of good trips before this single unfair rating.',
       required: false
     }
   ],
   fraud_flag: [
     {
       item_id: 'DEACTIVATION_NOTICE',
-      label: 'Deactivation Notice / App Fraud Warning Screen',
+      label: 'Suspension or Account Block Screenshot / SMS',
       source: 'NTSA LN 120 Reg 15(1) & Uber/Bolt/Little Fraud Policies',
-      reason: 'Establishes the exact algorithmic allegation and date of suspension required for formal due-process review under NTSA Reg 15(1).',
+      reason: 'Shows the exact warning or block message sent by the platform.',
       required: true
     },
     {
       item_id: 'CHRONOLOGICAL_TRIP_LOG',
-      label: 'Chronological Trip Log & Explanation',
+      label: 'Your Timeline Explanation of the Flagged Trips',
       source: 'TAWU Legal Guidance on Algorithmic Locks',
-      reason: 'Provides a trip-by-trip timeline accounting for flagged journeys, network drops, or legitimate repeat pickups.',
+      reason: 'Explains network drops, tall buildings, or legitimate repeat trips.',
       required: true
     },
     {
       item_id: 'LOCATION_HISTORY_EXPORT',
-      label: 'Google Maps Location History Export',
+      label: 'Google Maps Timeline Screenshot',
       source: 'TAWU Anti-Algorithmic Bias Protocol',
-      reason: 'Verifies actual vehicle trajectory and drop-off coordinates against automated GPS-spoofing or fake-trip flags.',
+      reason: 'Proves your car actually drove the route when the app flags "GPS manipulation".',
       required: false
     },
     {
       item_id: 'PASSENGER_MPESA_RECEIPT',
-      label: 'Passenger M-Pesa Receipt for Cash Trip',
+      label: 'M-Pesa Payment Message from the Passenger',
       source: 'Little Cab / Faras Financial Audit Terms',
-      reason: 'Proves that a real paying passenger completed the trip and paid via M-Pesa, refuting collusive or ghost-trip claims.',
+      reason: 'Proves a real customer rode in your car and paid via M-Pesa (not a ghost trip).',
       required: false
     }
   ]
@@ -281,8 +282,9 @@ export function validateKenyanPhone(raw: string): {
 }
 
 /**
- * Inspect an uploaded image/file to verify it is a genuine digital app screenshot or PDF document
- * rather than a photograph of a person, cup, award, or real-world scene.
+ * Inspect an uploaded image/file to verify it is a genuine digital app screenshot,
+ * M-Pesa transaction proof, SMS message, or PDF document rather than a camera
+ * photograph of a person, cup, award, trophy, or real-world scene.
  */
 export async function verifyUploadedScreenshot(file: File): Promise<{
   valid: boolean
@@ -305,21 +307,26 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
     }
   }
 
-  // 2. Reject camera/photo filenames (e.g. WhatsApp photos, camera roll IMG_/DSC_/PXL_, portraits, objects)
+  // 2. Clear pass if driver explicitly names M-Pesa proof / screenshot / receipt / statement
+  const isExplicitProofName = /\b(mpesa|m-pesa|receipt|statement|transaction|sms|screenshot|proof|notice|suspension|trip|fare)\b/i.test(
+    lowerName
+  )
+
+  // Reject obvious camera photo filenames unless explicitly named as a screenshot/proof
   if (
-    /\b(award|trophy|cup|mug|person|people|selfie|portrait|photo|wedding|party|dsc_|pxl_|img_\d{4}|whatsapp\s+image|camera)\b/i.test(
+    !isExplicitProofName &&
+    /\b(award|trophy|cup|mug|person|people|selfie|portrait|wedding|party|camera_photo)\b/i.test(
       lowerName
-    ) &&
-    !lowerName.includes('screenshot')
+    )
   ) {
     return {
       valid: false,
       reason:
-        'This file appears to be a camera photograph rather than an app screenshot. Please upload an actual screenshot of your suspension notice, trip receipt, or payment record.'
+        'This file appears to be a personal photograph (e.g. person, cup, or award) rather than an app screenshot or M-Pesa proof. Please upload your actual suspension notice, trip receipt, or M-Pesa transaction screenshot.'
     }
   }
 
-  // 3. Strict Pixel-Level Digital UI vs. Real-World Photograph Analysis
+  // 3. Pixel-Level Digital UI vs. Real-World Photograph Analysis
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
@@ -347,6 +354,8 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
         let naturalColorPixels = 0
         let skinOrWarmPixels = 0
         let uniformScanlines = 0
+        let mpesaGreenPixels = 0
+        let highContrastTextTransitions = 0
 
         for (let y = 0; y < sampleH; y++) {
           let rowIdenticalUiPixels = 0
@@ -360,35 +369,53 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
             const minC = Math.min(r, g, b)
             const saturation = maxC - minC
 
-            // Real-world photos (people, skin, cups, clothes, rooms, outdoors) have mid-tone color saturation
-            if (saturation > 18 && maxC < 245 && minC > 15) {
+            // Detect M-Pesa / Safaricom Brand Green UI (#00A859, #4CAF50, #00C853)
+            const isMpesaGreen = g > 90 && g > r * 1.25 && g > b * 1.25
+            if (isMpesaGreen) {
+              mpesaGreenPixels += 1
+            }
+
+            // Real-world photos (people, skin, cups, clothes, rooms, outdoors) have mid-tone color saturation,
+            // but exclude digital M-Pesa green elements from being counted as photo colors
+            if (!isMpesaGreen && saturation > 24 && maxC < 240 && minC > 20) {
               naturalColorPixels += 1
             }
 
-            // Skin tones & warm indoor lighting common in photos of people holding objects/cups/awards
-            if (r > 85 && g > 35 && b > 15 && r > g + 12 && g >= b && r - b > 24) {
+            // Human skin tones & warm indoor lighting typical of camera portraits / people holding cups or awards
+            if (r > 95 && g > 45 && b > 25 && r > g + 12 && g >= b && r - b > 25 && saturation < 90) {
               skinOrWarmPixels += 1
             }
 
-            // Digital app UIs consist of flat neutral surfaces (pure white, light gray, or dark mode)
-            // where adjacent horizontal pixels are digitally identical (zero camera sensor gradient)
+            // Digital app UIs consist of flat neutral surfaces (pure white, light gray, SMS bubbles, or dark mode)
             const isNeutralUi =
-              (r > 238 && g > 238 && b > 238 && saturation <= 6) ||
-              (r > 218 && g > 218 && b > 218 && saturation <= 8) ||
-              (r < 40 && g < 44 && b < 50 && saturation <= 10)
+              (r > 230 && g > 230 && b > 230 && saturation <= 10) || // Light UI / message background
+              (r > 205 && g > 205 && b > 205 && saturation <= 14) || // SMS bubble background
+              (r < 48 && g < 52 && b < 58 && saturation <= 14) ||   // Dark mode surface
+              isMpesaGreen                                           // M-Pesa green header/badge
 
             if (x > 0) {
               const prevIdx = idx - 4
-              const dr = Math.abs(r - data[prevIdx])
-              const dg = Math.abs(g - data[prevIdx + 1])
-              const db = Math.abs(b - data[prevIdx + 2])
-              if (isNeutralUi && dr <= 2 && dg <= 2 && db <= 2) {
+              const pr = data[prevIdx]
+              const pg = data[prevIdx + 1]
+              const pb = data[prevIdx + 2]
+              const dr = Math.abs(r - pr)
+              const dg = Math.abs(g - pg)
+              const db = Math.abs(b - pb)
+
+              // Handle WhatsApp JPEG compression tolerance (dr <= 6)
+              if (isNeutralUi && dr <= 6 && dg <= 6 && db <= 6) {
                 exactDigitalUiPairs += 1
                 rowIdenticalUiPixels += 1
               }
+
+              // Text stroke transitions (black/dark text on light background or vice versa)
+              const lumDiff = Math.abs((r * 0.299 + g * 0.587 + b * 0.114) - (pr * 0.299 + pg * 0.587 + pb * 0.114))
+              if (lumDiff > 80) {
+                highContrastTextTransitions += 1
+              }
             }
           }
-          if (rowIdenticalUiPixels >= sampleW * 0.55) {
+          if (rowIdenticalUiPixels >= sampleW * 0.42) {
             uniformScanlines += 1
           }
         }
@@ -397,34 +424,48 @@ export async function verifyUploadedScreenshot(file: File): Promise<{
         const naturalColorRatio = naturalColorPixels / totalPixels
         const skinRatio = skinOrWarmPixels / totalPixels
         const scanlineRatio = uniformScanlines / sampleH
-        const aspect = height / Math.max(1, width)
+        const mpesaGreenRatio = mpesaGreenPixels / totalPixels
 
-        // A genuine app screenshot has:
-        // - High digital flat scanlines (scanlineRatio >= 0.42 and digitalPairRatio >= 0.45)
-        // - Very low skin/portrait pixels (skinRatio < 0.06)
-        // - Low natural photo color variance (naturalColorRatio < 0.22)
-        // - Usually portrait mobile screen aspect ratio (aspect >= 1.35) unless a cropped receipt banner with >65% flat UI
-        const isPortraitPhoneScreen = aspect >= 1.35
-        const isCroppedReceipt = !isPortraitPhoneScreen && digitalPairRatio >= 0.65 && skinRatio < 0.03
+        // M-Pesa screenshot or SMS with green banner or digital SMS bubbles
+        const isMpesaOrSmsProof =
+          (mpesaGreenRatio > 0.03 || highContrastTextTransitions > 40) &&
+          skinRatio < 0.05 &&
+          (digitalPairRatio >= 0.35 || scanlineRatio >= 0.25)
 
+        // Camera photo of person holding award/cup has high skin ratio, high natural color, low digital scanlines
+        const isCameraPortraitOrObjectPhoto =
+          skinRatio >= 0.075 &&
+          naturalColorRatio >= 0.24 &&
+          scanlineRatio < 0.35 &&
+          !isMpesaOrSmsProof
+
+        if (isCameraPortraitOrObjectPhoto || (skinRatio >= 0.09 && !isMpesaOrSmsProof)) {
+          resolve({
+            valid: false,
+            reason:
+              'This image looks like a photograph of a person, object, or award rather than an app screenshot or M-Pesa transaction proof. Please upload your actual M-Pesa SMS, trip receipt, or suspension message.'
+          })
+          return
+        }
+
+        // Must exhibit digital UI traits (flat background, scanlines, M-Pesa green, or text contrast)
         if (
-          skinRatio >= 0.055 ||
-          naturalColorRatio >= 0.22 ||
-          digitalPairRatio < 0.45 ||
-          scanlineRatio < 0.40 ||
-          (!isPortraitPhoneScreen && !isCroppedReceipt)
+          !isMpesaOrSmsProof &&
+          digitalPairRatio < 0.35 &&
+          scanlineRatio < 0.30 &&
+          naturalColorRatio >= 0.28
         ) {
           resolve({
             valid: false,
             reason:
-              'Invalid image: This looks like a photograph of a person, object, or scene rather than an app screenshot. Please upload a real screenshot of your Uber/Bolt/Little suspension notice, trip receipt, or M-Pesa message.'
+              'This image does not appear to be an app screenshot or payment proof. Please upload your Bolt/Uber receipt, suspension screen, or M-Pesa SMS confirmation.'
           })
           return
         }
 
         resolve({
           valid: true,
-          reason: `Verified digital app screenshot (${width}×${height}px).`
+          reason: `Verified digital screenshot (${width}×${height}px).`
         })
       } catch {
         resolve({ valid: true, reason: `Screenshot attached (${width}×${height}px).` })
@@ -549,10 +590,11 @@ export function extractEntities(text: string): ExtractedEntity[] {
     }
   }
 
-  // DATE patterns (English + Swahili)
+  // DATE patterns (English + Swahili + M-Pesa numeric dates)
   const datePatterns = [
     /\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?:\s+(?:morning|afternoon|evening|night|\d{1,2}(?:st|nd|rd|th)?(?:\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?))?))?\b/gi,
     /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+\d{4})?\b/gi,
+    /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g,
     /\b(?:yesterday|today|last\s+week|last\s+night|this\s+morning|jana|juzi|wiki\s+iliyopita|jumamosi|jumapili|jumatatu|jumanne|jumatano|alhamisi|ijumaa)\b/gi
   ]
   for (const pat of datePatterns) {
@@ -581,9 +623,9 @@ export function extractEntities(text: string): ExtractedEntity[] {
     }
   }
 
-  // MONEY patterns (KSh, KES, bob)
+  // MONEY patterns (KSh, KES, bob, M-Pesa amounts)
   const moneyPatterns = [
-    /\b(?:KSh|KES|Kshs?)\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/gi,
+    /\b(?:KSh|KES|Kshs?)\.?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/gi,
     /\b\d{1,3}(?:,\d{3})*\s*(?:bob|shillings|shilingi)\b/gi
   ]
   for (const pat of moneyPatterns) {
@@ -592,11 +634,18 @@ export function extractEntities(text: string): ExtractedEntity[] {
     }
   }
 
-  // TRIP_ID patterns — require explicit prefix + digits so normal words after "trip" never match
+  // TRIP_ID and M-PESA Reference patterns
   const tripPatterns = [
     /\b(?:TRP|TRIP|BOLT|UBER|LTL|FRS)-[A-Z0-9]*\d[A-Z0-9]*\b/gi,
-    /\btrip\s+(?:id|ref|reference|code|number)\s*[:#-]?\s*([A-Z0-9-]*\d[A-Z0-9-]*)\b/gi
+    /\btrip\s+(?:id|ref|reference|code|number)\s*[:#-]?\s*([A-Z0-9-]*\d[A-Z0-9-]*)\b/gi,
+    /\b([A-Z0-9]{10})\s+Confirmed\b/gi,
+    /\b(?:mpesa|m-pesa|receipt|code|ref)[:\s#]*([A-Z0-9]{10})\b/gi
   ]
+  for (const pat of tripPatterns) {
+    for (const m of text.matchAll(pat)) {
+      add('TRIP_ID', m[1] || m[0])
+    }
+  }
   for (const pat of tripPatterns) {
     for (const m of text.matchAll(pat)) {
       add('TRIP_ID', m[1] || m[0])

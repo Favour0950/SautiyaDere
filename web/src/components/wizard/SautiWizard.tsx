@@ -940,20 +940,42 @@ function Chat({
       )
     ) {
       if (fullText.split(/\s+/).filter(Boolean).length >= 6) {
-        return `Okay, great! Everything you shared is saved. Go ahead and click "Analyze & Review Extracted Facts" below to move to the next step.`
+        return `Okay, great! Everything you shared is saved. Go ahead and click "Analyze & Review Extracted Facts" below to review the facts and check your evidence.`
       }
       return `Okay, no problem! Whenever you're ready, just describe what happened with your ${platform} trip or account.`
     }
 
-    // 4. Natural response when driver says they want to appeal / account was suspended without full details yet
+    // 4. Driver shares M-Pesa transaction proof or SMS confirmation
+    const mpesaMatch = lastMsg.match(/\b([A-Z0-9]{10})\s+Confirmed/i) || lastMsg.match(/\bConfirmed\b.*?\b(KSh|KES)\s*[\d,]+/i)
+    const moneyInLastMsg = lastMsg.match(/\b(?:KSh|KES|Kshs?)\.?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/i)
+    if (mpesaMatch || /\b(mpesa|m-pesa|transaction\s+code|payment\s+confirmation)\b/i.test(lastLower)) {
+      const codeStr = mpesaMatch?.[1] ? ` (Code: ${mpesaMatch[1]})` : ''
+      const amountStr = moneyInLastMsg ? ` for ${moneyInLastMsg[0]}` : ''
+      return `I see your M-Pesa transaction proof${codeStr}${amountStr}. I've noted this as verified proof of payment for your ${platform} appeal. What happened next on this trip?`
+    }
+
+    // 5. Driver asks a question
+    if (/\b(what\s+evidence|what\s+proof|what\s+documents|what\s+do\s+i\s+need)\b/i.test(lastLower)) {
+      return `For this appeal, having a screenshot of your trip receipt and your M-Pesa statement or payment message is very strong. If you have messages with the passenger or dashcam clips, those help too. What happened during the trip?`
+    }
+    if (/\b(can\s+they\s+block|can\s+bolt\s+block|can\s+uber\s+block|is\s+this\s+legal|why\s+was\s+i\s+suspended)\b/i.test(lastLower)) {
+      return `Under Kenyan NTSA regulations (Legal Notice 120 of 2022, Reg 15), platforms must give you written reasons and a fair opportunity to be heard before deactivation. That is exactly what this appeal demands. Tell me what happened so we can build your case.`
+    }
+    if (/\b(how\s+does\s+this\s+work|what\s+should\s+i\s+do|how\s+to\s+appeal)\b/i.test(lastLower)) {
+      return `Just tell me your story in plain words. I will extract the key trip facts and organize them into a formal 5-section legal appeal letter that you can submit directly to ${platform} support.`
+    }
+
+    // 6. Dynamic fact-gap detection (No scripted follow-ups!)
     const allEnts = extractEntities(fullText)
     const allDates = allEnts.filter((e) => e.label === 'DATE' || e.label === 'TIME')
     const allLocs = allEnts.filter((e) => e.label === 'LOCATION')
+    const allMoney = allEnts.filter((e) => e.label === 'MONEY')
     const substantiveMsgs = dMsgs.filter(
       (m) =>
         !/^(hi|hello|hey|ok|okay|yes|no|thanks|thank\s+you)[!.,?\s]*$/i.test(m.text.trim())
     )
 
+    // Initial appeal mention without details
     if (
       substantiveMsgs.length === 1 &&
       words.length <= 10 &&
@@ -961,38 +983,47 @@ function Chat({
       allDates.length === 0 &&
       allLocs.length === 0
     ) {
-      return `Okay, I understand. Having your ${platform} account affected is stressful, and I'll help you write a clear appeal. What happened leading up to this?`
+      return `Okay, I understand. Having your ${platform} account affected is stressful, and I'll help you write a clear appeal. In your own words, what happened?`
     }
 
-    // 5. Build a natural, empathetic acknowledgement of what the driver just said
+    // Empathetic opening acknowledging topic
     let empathy = 'Okay, I understand.'
-    if (/\b(fare|paid|pay|unpaid|cash|mpesa|m-pesa|ksh|money|commission)\b/i.test(lastLower)) {
-      empathy = 'Okay, I understand. Dealing with an unpaid or disputed fare is frustrating.'
-    } else if (/\b(passenger|rude|drunk|safety|conduct|threat|abuse|smoke|five|5)\b/i.test(lastLower)) {
-      empathy = 'Okay, I understand. Thank you for explaining what happened with that passenger.'
-    } else if (/\b(cancel|cancelled|cancellation|rating|star|pin)\b/i.test(lastLower)) {
-      empathy = 'Okay, I understand how unfair it feels when cancellations or ratings affect your account.'
-    } else if (/\b(gps|fraud|selfie|identity|verification|blocked|suspended)\b/i.test(lastLower)) {
-      empathy = `Okay, I understand. We'll make sure that is explained clearly to ${platform}.`
+    if (/\b(fare|paid|pay|unpaid|cash|mpesa|m-pesa|ksh|money|commission|deducted|withheld)\b/i.test(lastLower)) {
+      empathy = 'Okay, I understand. Dealing with an unpaid or disputed fare is really frustrating.'
+    } else if (/\b(passenger|rude|drunk|safety|conduct|threat|abuse|smoke|five|5|insult)\b/i.test(lastLower)) {
+      empathy = 'Okay, I understand. Thank you for clarifying what happened with the passenger.'
+    } else if (/\b(cancel|cancelled|cancellation|rating|star|pin|pickup)\b/i.test(lastLower)) {
+      empathy = 'Okay, I understand. Penalties over ratings or rider cancellations are often unfair to the driver.'
+    } else if (/\b(gps|fraud|selfie|identity|verification|blocked|suspended|glitch)\b/i.test(lastLower)) {
+      empathy = `Okay, I understand. We will make sure that system issue is clearly addressed to ${platform}.`
     }
 
-    // 6. Ask only for the next missing piece of information in a natural conversational way
-    if (allDates.length === 0 && allLocs.length === 0 && substantiveMsgs.length <= 2) {
-      return `${empathy} Just so we can include the trip details in your appeal letter, when did this happen, and what area or route were you driving in?`
-    }
-    if (allLocs.length === 0 && substantiveMsgs.length <= 2) {
-      return `${empathy} Which area or pickup/drop-off route did this happen on?`
-    }
-    if (allDates.length === 0 && substantiveMsgs.length <= 2) {
-      return `${empathy} Roughly what day and time did this happen?`
+    // Check what is already provided vs what is still missing
+    const hasRoute = allLocs.length > 0
+    const hasTime = allDates.length > 0
+    const hasAmount = allMoney.length > 0
+    const hasFullStory = substantiveMsgs.length >= 2 || words.length >= 15
+
+    if (hasRoute && hasTime && hasFullStory) {
+      const summaryParts = [
+        `route (${allLocs.slice(0, 2).map((l) => l.text).join(' → ')})`,
+        `date/time (${allDates[0].text})`,
+        hasAmount ? `amount (${allMoney[0].text})` : ''
+      ].filter(Boolean)
+      return `${empathy} I have recorded your ${summaryParts.join(', ')} and your explanation. You can add any other details, or click "Analyze & Review Extracted Facts" below whenever you're ready.`
     }
 
-    if (substantiveMsgs.length <= 2) {
-      const followUp = getCaseSpecificFollowUp(noticeText, fullText)
-      return `${empathy} ${followUp.question}`
+    if (!hasRoute && hasTime) {
+      return `${empathy} What area or pickup/drop-off route in Nairobi did this trip take place on?`
+    }
+    if (hasRoute && !hasTime) {
+      return `${empathy} Roughly what day and time did this trip take place?`
+    }
+    if (!hasRoute && !hasTime && words.length >= 8) {
+      return `${empathy} To include the exact incident details in your appeal letter, what date/time was this, and what route or area were you driving on?`
     }
 
-    return `Okay, I've got all of that down for your ${platform} appeal. Is there anything else you'd like to add, or are you ready to click "Analyze & Review Extracted Facts" below?`
+    return `${empathy} I've recorded that. Is there anything else you'd like to mention about this trip, or are you ready to review the facts below?`
   }
 
   const handleSendMessage = (customText?: string) => {
@@ -1140,6 +1171,16 @@ function Chat({
     setVoiceMessage(`✓ ${check.reason}`)
     setTimeout(() => setVoiceMessage(''), 4000)
     onAttachEvidenceFile(file.name)
+
+    const isMpesa = /mpesa|m-pesa|receipt|statement|payment|sms/i.test(file.name)
+    const replyText = isMpesa
+      ? `✓ I've attached your M-Pesa transaction proof ("${file.name}") and marked it on your evidence checklist. What happened during this trip?`
+      : `✓ I've attached your screenshot ("${file.name}") and added it to your evidence checklist. You can continue typing your story below.`
+
+    setMessages((prev) => [
+      ...prev,
+      { id: `bot-file-${Date.now()}`, sender: 'bot', text: replyText }
+    ])
   }
 
   const handleResetChat = () => {
@@ -1708,13 +1749,14 @@ function Verify({
   )
 }
 
-/* Screen 5: Interactive Evidence Checklist & Gap Checker (Task T07 & T24) */
+/* Screen 5: Interactive Evidence Checklist & Gap Checker (HCI Compliant - Task T07 & T24) */
 function Evidence({
   go,
   menu,
   analysis,
   evidenceHeld,
   onToggleEvidence,
+  onAddEntity,
   casesCount
 }: {
   go: (n: number) => void
@@ -1722,23 +1764,30 @@ function Evidence({
   analysis: AnalysisResult
   evidenceHeld: string[]
   onToggleEvidence: (itemId: string) => void
+  onAddEntity?: (entity: EntityItem) => void
   casesCount: number
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [pendingItemId, setPendingItemId] = useState<string | null>(null)
   const [attachedFileNames, setAttachedFileNames] = useState<Record<string, string>>({})
+  const [pastingMpesaFor, setPastingMpesaFor] = useState<string | null>(null)
+  const [mpesaText, setMpesaText] = useState('')
+  const [mpesaSuccessBanner, setMpesaSuccessBanner] = useState('')
 
   const activeCaseType = analysis.classification.case_type || 'fare_dispute'
   const checklist =
     analysis.evidence.checklist || CASE_CHECKLISTS[activeCaseType] || CASE_CHECKLISTS.fare_dispute
-  const readiness = analysis.evidence.readiness ?? 0.5
+  const totalItems = checklist.length
+  const heldCount = checklist.filter((item) => evidenceHeld.includes(item.item_id)).length
+  const readiness = totalItems > 0 ? Number((heldCount / totalItems).toFixed(2)) : 0.5
   const readinessPct = Math.round(readiness * 100)
   const readinessLabel =
-    readiness >= 0.8 ? 'Strong Dossier' : readiness >= 0.5 ? 'Moderate' : 'Needs Evidence'
+    readiness >= 0.75 ? 'Strong Case' : readiness >= 0.5 ? 'Moderate' : 'Basic Details'
 
   const [evidenceImageError, setEvidenceImageError] = useState('')
 
-  const handleAttachClick = (itemId: string) => {
+  const handleAttachClick = (e: React.MouseEvent, itemId: string) => {
+    e.stopPropagation()
     setEvidenceImageError('')
     setPendingItemId(itemId)
     fileInputRef.current?.click()
@@ -1763,6 +1812,32 @@ function Evidence({
     setPendingItemId(null)
   }
 
+  const handleSavePastedMpesa = (e: React.MouseEvent, itemId: string) => {
+    e.stopPropagation()
+    const trimmed = mpesaText.trim()
+    if (!trimmed) return
+
+    // Extract facts from pasted M-Pesa SMS
+    const extracted = extractEntities(trimmed)
+    if (onAddEntity && extracted.length > 0) {
+      for (const ent of extracted) {
+        onAddEntity(ent)
+      }
+    }
+
+    if (!evidenceHeld.includes(itemId)) {
+      onToggleEvidence(itemId)
+    }
+    setAttachedFileNames((prev) => ({
+      ...prev,
+      [itemId]: `M-Pesa SMS (${trimmed.slice(0, 24)}...)`
+    }))
+    setPastingMpesaFor(null)
+    setMpesaText('')
+    setMpesaSuccessBanner('✓ M-Pesa payment proof verified and added to your appeal facts.')
+    setTimeout(() => setMpesaSuccessBanner(''), 4500)
+  }
+
   return (
     <>
       <Header
@@ -1773,27 +1848,33 @@ function Evidence({
         onOpenLog={() => go(7)}
       />
       <main className="flex flex-1 flex-col gap-4 px-5 py-5">
+        {/* Top Header & Readiness Score */}
         <div className="flex items-end justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">
-              Step 4 · Evidence Gap Audit
+              Step 4 · Evidence Review
             </p>
-            <h1 className="mt-1 text-2xl font-black">Your Evidence Checklist</h1>
+            <h1 className="mt-1 text-2xl font-black text-slate-900">Evidence Checklist</h1>
           </div>
-          <b className="text-xs font-extrabold text-[#1E5E3A]">
-            {readinessPct}% ({readinessLabel})
-          </b>
+          <span className="rounded-full bg-[#E9F3ED] px-3 py-1 text-xs font-black text-[#1E5E3A]">
+            {heldCount} of {totalItems} Ready ({readinessPct}%)
+          </span>
         </div>
 
-        <div>
-          <div className="h-2.5 rounded-full bg-slate-200">
+        {/* Progress Bar & HCI Reassurance */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-2xs">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+            <span>Appeal Strength</span>
+            <span className="text-[#1E5E3A]">{readinessLabel}</span>
+          </div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
             <div
               className="h-full rounded-full bg-[#1E5E3A] transition-all duration-300"
-              style={{ width: `${Math.min(100, Math.max(8, readinessPct))}%` }}
+              style={{ width: `${Math.min(100, Math.max(12, readinessPct))}%` }}
             />
           </div>
-          <p className="mt-1.5 text-xs text-slate-600">
-            Tick the evidence you already have on your phone. Missing required items are highlighted below with the legal reason you need them.
+          <p className="mt-2 text-xs leading-4 text-slate-500">
+            Tap any card to mark evidence you have. Don't worry if you don't have every item — you can generate your appeal now with what you have.
           </p>
         </div>
 
@@ -1811,61 +1892,135 @@ function Evidence({
           </p>
         )}
 
-        <div className="flex flex-col gap-2.5">
+        {mpesaSuccessBanner && (
+          <p className="rounded-xl border border-emerald-200 bg-[#E9F3ED] p-3 text-xs font-bold text-[#1E5E3A]">
+            {mpesaSuccessBanner}
+          </p>
+        )}
+
+        {/* HCI-Compliant Evidence Cards (Full Card Tap Target) */}
+        <div className="flex flex-col gap-3">
           {checklist.map((item) => {
             const isHeld = evidenceHeld.includes(item.item_id)
             const fileName = attachedFileNames[item.item_id]
+            const isMpesaItem =
+              item.item_id === 'MPESA_STATEMENT' || item.item_id === 'PASSENGER_MPESA_RECEIPT'
+            const isPastingThis = pastingMpesaFor === item.item_id
 
             return (
               <div
                 key={item.item_id}
-                className={`rounded-2xl border p-3.5 transition ${
+                role="button"
+                tabIndex={0}
+                onClick={() => onToggleEvidence(item.item_id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onToggleEvidence(item.item_id)
+                  }
+                }}
+                className={`cursor-pointer rounded-2xl border p-4 text-left transition select-none ${
                   isHeld
-                    ? 'border-[#B9DCC6] bg-[#F1F9F3]'
+                    ? 'border-[#89C3A0] bg-[#F1F9F3] shadow-xs'
                     : item.required
-                      ? 'border-l-4 border-amber-400 bg-[#FFF7ED]'
-                      : 'border-slate-200 bg-white'
+                      ? 'border-l-4 border-l-amber-500 border-slate-200 bg-white hover:border-slate-300'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={isHeld}
-                    onChange={() => onToggleEvidence(item.item_id)}
-                    className="mt-1 size-4 cursor-pointer accent-[#1E5E3A]"
-                  />
+                  {/* Clean Visual Check Indicator */}
+                  <div
+                    className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border text-xs font-black transition ${
+                      isHeld
+                        ? 'border-[#1E5E3A] bg-[#1E5E3A] text-white'
+                        : 'border-slate-300 bg-white text-transparent'
+                    }`}
+                  >
+                    ✓
+                  </div>
+
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-1">
-                      <b className="text-xs text-[#0F172A]">{item.label}</b>
+                      <b className="text-sm font-extrabold text-slate-900">{item.label}</b>
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
                           isHeld
                             ? 'bg-[#1E5E3A] text-white'
                             : item.required
-                              ? 'bg-amber-200 text-amber-950'
+                              ? 'bg-amber-100 text-amber-900'
                               : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        {isHeld ? '✓ Ready' : item.required ? 'Required' : 'Optional'}
+                        {isHeld ? '✓ Included' : item.required ? 'Recommended' : 'Optional'}
                       </span>
                     </div>
-                    <p className="mt-1 text-[11px] leading-4 text-slate-600">{item.reason}</p>
-                    <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                      Source: {item.source}
-                    </p>
+
+                    <p className="mt-1 text-xs text-slate-600 leading-snug">{item.reason}</p>
+
                     {fileName && (
-                      <p className="mt-1 text-[11px] font-bold text-[#1E5E3A]">
-                        📎 Attached on device: {fileName}
-                      </p>
+                      <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-[#1E5E3A] ring-1 ring-[#1E5E3A]/20">
+                        <span>📎</span>
+                        <span className="truncate">{fileName}</span>
+                      </div>
                     )}
-                    {!isHeld && (
+
+                    {/* Inline Actions (Upload Screenshot or Paste M-Pesa SMS) */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
-                        onClick={() => handleAttachClick(item.item_id)}
-                        className="mt-2 flex items-center gap-1.5 text-[11px] font-extrabold text-[#A34F00] hover:underline"
+                        onClick={(e) => handleAttachClick(e, item.item_id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50"
                       >
-                        <Upload size={13} /> + Attach Screenshot / Document from Phone
+                        <Upload size={13} className="text-[#1E5E3A]" />
+                        <span>{fileName ? 'Replace Screenshot' : 'Attach Screenshot'}</span>
                       </button>
+
+                      {isMpesaItem && !fileName && (
+                        <button
+                          type="button"
+                          onClick={() => setPastingMpesaFor(isPastingThis ? null : item.item_id)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-[#E9F3ED] px-3 py-1.5 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB]"
+                        >
+                          <span>📋</span>
+                          <span>{isPastingThis ? 'Close Box' : 'Paste M-Pesa SMS'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Inline M-Pesa SMS Paste Box */}
+                    {isPastingThis && (
+                      <div
+                        className="mt-3 rounded-xl border border-[#1E5E3A] bg-white p-3 shadow-xs"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <label className="block text-[11px] font-extrabold text-slate-700">
+                          Paste your M-Pesa confirmation SMS text here:
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={mpesaText}
+                          onChange={(e) => setMpesaText(e.target.value)}
+                          placeholder="e.g. SJK849201M Confirmed. Ksh 1,450.00 sent to..."
+                          className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-xs text-slate-900 outline-none focus:border-[#1E5E3A]"
+                        />
+                        <div className="mt-2 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPastingMpesaFor(null)}
+                            className="rounded-lg px-2.5 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!mpesaText.trim()}
+                            onClick={(e) => handleSavePastedMpesa(e, item.item_id)}
+                            className="rounded-lg bg-[#1E5E3A] px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
+                          >
+                            Save M-Pesa Proof
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1874,9 +2029,10 @@ function Evidence({
           })}
         </div>
 
-        <div className="mt-auto pt-2">
+        {/* Generate Appeal CTA */}
+        <div className="mt-auto pt-3">
           <Btn onClick={() => go(6)}>
-            Generate Legal Appeal Dossier <ArrowRight size={18} />
+            Generate Legal Appeal Letter <ArrowRight size={18} />
           </Btn>
         </div>
       </main>
@@ -2589,8 +2745,17 @@ export default function Page() {
 
   const handleAttachEvidenceFile = (fileName: string) => {
     setAttachedFiles((prev) => [...prev, fileName])
+    const lower = fileName.toLowerCase()
+    const autoHeldId =
+      lower.includes('mpesa') || lower.includes('m-pesa') || lower.includes('payment') || lower.includes('receipt') || lower.includes('sms')
+        ? 'MPESA_STATEMENT'
+        : lower.includes('trip')
+          ? 'TRIP_RECEIPT_SCREENSHOT'
+          : lower.includes('map') || lower.includes('gps')
+            ? 'GPS_ROUTE_LOG'
+            : 'IN_APP_CHAT_SCREENSHOT'
     setEvidenceHeld((prev) =>
-      prev.includes('IN_APP_CHAT_SCREENSHOT') ? prev : [...prev, 'IN_APP_CHAT_SCREENSHOT']
+      prev.includes(autoHeldId) ? prev : [...prev, autoHeldId]
     )
   }
 
@@ -2885,6 +3050,7 @@ export default function Page() {
               analysis={analysis}
               evidenceHeld={evidenceHeld}
               onToggleEvidence={handleToggleEvidence}
+              onAddEntity={handleAddEntity}
               casesCount={casesList.length}
             />
           )}
