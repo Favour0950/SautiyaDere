@@ -18,6 +18,11 @@ from .schemas import (
     SmsReminderRequest,
     SmsReminderResponse,
 )
+from .services.appeal_builder import build_appeal
+from .services.classifier import classify_case
+from .services.extraction import extract
+from .services.gap_checker import evaluate_evidence_gaps
+from .services.redaction import redact
 from .services.sms import send_timeline_reminder
 
 app = FastAPI(title="Sauti ya Dere API", version="0.1.0")
@@ -49,9 +54,35 @@ def health() -> HealthResponse:
 @api_router.post("/analyze", response_model=AnalyzeResponse)
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
-    # Stub. The real pipeline (filter, extraction, case type, gap checker,
-    # appeal statement) is joined here in T31.
-    return AnalyzeResponse()
+    """Full end-to-end analysis pipeline (Task T31):
+    1. Redact personal details (Presidio, T15)
+    2. Extract facts from redacted narrative (spaCy EntityRuler, T16)
+    3. Classify dispute category (SetFit model / fallback, T22)
+    4. Audit held evidence against statutory checklists (T24)
+    5. Draft policy-grounded appeal and restore personal placeholders (T25/T30)
+    """
+    redacted = redact(body.narrative)
+    entities = extract(redacted.text)
+    classification = classify_case(redacted.text, body.notice_text)
+    evidence = evaluate_evidence_gaps(
+        classification.case_type or "fare_dispute",
+        body.evidence_held,
+    )
+    appeal = build_appeal(
+        case_type=classification.case_type,
+        platform=body.platform,
+        entities=entities,
+        redacted_narrative=redacted.text,
+        mapping=redacted.mapping,
+    )
+    return AnalyzeResponse(
+        stub=False,
+        redacted_narrative=redacted.text,
+        classification=classification,
+        entities=entities,
+        evidence=evidence,
+        appeal=appeal,
+    )
 
 
 @api_router.post("/notify/sms", response_model=SmsReminderResponse)

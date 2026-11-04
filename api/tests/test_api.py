@@ -15,23 +15,29 @@ def test_health():
     assert res.json() == {"status": "ok"}
 
 
-def test_analyze_stub_accepts_valid_body():
+def test_analyze_runs_full_pipeline():
     res = client.post(
         "/analyze",
         json={
-            "narrative": "Passenger refused to pay the full fare.",
+            "narrative": "On Friday around 8:30pm from Westlands to Syokimau, rider Wanjiku (0712 345 678) refused to pay the KSh 1,450 fare.",
             "platform": "Bolt",
-            "evidence_held": ["suspension notice"],
+            "evidence_held": ["EVID-TRIP-RECEIPT"],
         },
     )
     assert res.status_code == 200
     data = res.json()
-    assert data["stub"] is True
-    assert data["classification"]["case_type"] is None
-    assert data["classification"]["needs_confirmation"] is True
-    assert data["entities"] == []
-    assert data["evidence"]["missing"] == []
-    assert data["appeal"]["policy_rules"] == []
+    assert data["stub"] is False
+    assert "<PHONE_1>" in data["redacted_narrative"]
+    assert data["classification"]["case_type"] in (
+        "fare_dispute",
+        "passenger_safety",
+        "rating_or_cancellation",
+        "fraud_flag",
+    )
+    assert len(data["entities"]) >= 1
+    assert data["evidence"]["readiness"] is not None
+    assert len(data["appeal"]["policy_rules"]) >= 1
+    assert data["appeal"]["body"] is not None
 
 
 def test_api_analyze_prefix_and_field_aliases():
@@ -46,7 +52,7 @@ def test_api_analyze_prefix_and_field_aliases():
     )
     assert res.status_code == 200
     data = res.json()
-    assert data["stub"] is True
+    assert data["stub"] is False
     assert set(data) == {
         "stub",
         "redacted_narrative",

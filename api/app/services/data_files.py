@@ -15,5 +15,5 @@ def load_json(name: str) -> Any:
     for data_dir in _CANDIDATES:
         path = data_dir / name
         if path.exists():
-            return json.loads(path.read_text())
+            return json.loads(path.read_text(encoding="utf-8"))
     raise FileNotFoundError(f"data/{name} not found")

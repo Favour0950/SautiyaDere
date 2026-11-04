@@ -1,5 +1,5 @@
 /**
- * Sauti ya Dere — Client-Side Storage Layer (Task T25)
+ * Sauti ya Dere - Client-Side Storage Layer (Task T25)
  *
  * IndexedDB database powered by Dexie.js for persistent, privacy-first on-device storage.
  * In accordance with our Dignity & Anti-Retaliation architectural principle:
@@ -92,6 +92,25 @@ export async function getCaseById(id) {
   const numericId = typeof id === 'string' && !isNaN(Number(id)) ? Number(id) : id;
   const item = await db.cases.get(numericId);
   return item || null;
+}
+
+/**
+ * Delete a single case record by its ID.
+ *
+ * @param {number|string} id - The case ID
+ */
+export async function deleteCaseById(id) {
+  if (id === null || id === undefined) return;
+  const numericId = typeof id === 'string' && !isNaN(Number(id)) ? Number(id) : id;
+  await db.cases.delete(numericId);
+}
+
+/**
+ * Clear all driver profile and case data from on-device IndexedDB storage.
+ */
+export async function clearAllLocalData() {
+  await db.profile.clear();
+  await db.cases.clear();
 }
 
 export default db;
