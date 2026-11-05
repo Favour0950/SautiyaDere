@@ -94,4 +94,28 @@ export async function getCaseById(id) {
   return item || null;
 }
 
+/**
+ * Update the status of an existing case record in IndexedDB.
+ *
+ * @param {number|string} id - Numeric case ID
+ * @param {string} status - New case status (e.g. 'Platform Reinstated Account')
+ * @returns {Promise<void>}
+ */
+export async function updateCaseStatus(id, status) {
+  if (id === null || id === undefined) return;
+  const numericId = typeof id === 'string' && !isNaN(Number(id)) ? Number(id) : id;
+  await db.cases.update(numericId, {
+    status,
+    updated_at: new Date().toISOString()
+  });
+}
+
+/**
+ * Purge all local profile and case data from IndexedDB.
+ */
+export async function clearAllLocalData() {
+  await db.profile.clear();
+  await db.cases.clear();
+}
+
 export default db;
