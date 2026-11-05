@@ -404,22 +404,10 @@ export async function sendDereBotMessage({
   const systemInstructionText = `${getSystemPrompt(language)}\nContext: The driver is appealing an account suspension on ${platform}. Reason: "${noticeReason}".${evidenceContext}${ocrContext}`
 
   // Apply PII scrubbing before sending driver text to model
-  const rawContents = messages.map((m) => ({
+  const contents = messages.map((m) => ({
     role: m.sender === 'driver' ? 'user' : 'model',
     parts: [{ text: m.sender === 'driver' ? scrubPII(m.text) : m.text }]
   }))
-
-  // Ensure conversation begins with a user turn for Gemini API compliance
-  const contents =
-    rawContents.length > 0 && rawContents[0].role === 'model'
-      ? [
-          {
-            role: 'user',
-            parts: [{ text: `I am appealing my account suspension on ${platform}. Reason: "${noticeReason}". Please assist me.` }]
-          },
-          ...rawContents
-        ]
-      : rawContents
 
   try {
     const res = await fetch(endpoint, {

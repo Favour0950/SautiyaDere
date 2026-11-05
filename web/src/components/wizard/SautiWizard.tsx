@@ -279,7 +279,7 @@ function Header({
   }, [notifications, activeCase])
 
   return (
-    <div className="sticky top-0 z-30 bg-white shadow-xs">
+    <>
       <header className="flex min-h-[68px] items-center justify-between border-b border-slate-200 bg-white px-5">
         <div className="flex items-center gap-3">
           {onBack ? (
@@ -341,7 +341,7 @@ function Header({
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -715,11 +715,7 @@ function Chat({
   entities,
   onSetEntities,
   onSelectCaseType,
-  onUpdateConfidence,
-  messages,
-  onSetMessages,
-  language,
-  onSetLanguage
+  onUpdateConfidence
 }: {
   go: (n: number) => void
   menu: () => void
@@ -736,11 +732,8 @@ function Chat({
   onSetEntities: (entities: EntityItem[]) => void
   onSelectCaseType: (t: string) => void
   onUpdateConfidence: (confidence: number) => void
-  messages: ChatMessage[]
-  onSetMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>> | ((msgs: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void)
-  language: 'en' | 'sw'
-  onSetLanguage: (lang: 'en' | 'sw') => void
 }) {
+  const [language, setLanguage] = useState<'en' | 'sw'>('en')
   const [showFactsDetails, setShowFactsDetails] = useState(false)
 
   const getGreeting = (lang: 'en' | 'sw') => {
@@ -754,18 +747,15 @@ function Chat({
       : `Hello driver. We understand your account suspension on ${platform} is frustrating. I am DereBot, your legal intake assistant.${ocrSummary}\n\nPlease describe what happened in your own words — including the trip date, time, pickup and drop-off stages in Nairobi, and what led to this deactivation.`
   }
 
-  // Initialize greeting if empty
-  useEffect(() => {
-    if (messages.length === 0) {
-      onSetMessages([{ sender: 'bot', text: getGreeting(language) }])
-    }
-  }, [])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    { sender: 'bot', text: getGreeting('en') }
+  ])
 
   // Switch greeting when user toggles language if they haven't started chatting
   const handleToggleLanguage = (newLang: 'en' | 'sw') => {
-    onSetLanguage(newLang)
+    setLanguage(newLang)
     if (messages.length === 1 && messages[0].sender === 'bot') {
-      onSetMessages([{ sender: 'bot', text: getGreeting(newLang) }])
+      setMessages([{ sender: 'bot', text: getGreeting(newLang) }])
     }
   }
 
@@ -790,7 +780,7 @@ function Chat({
 
     const newDriverMsg: ChatMessage = { sender: 'driver', text }
     const nextMessages = [...messages, newDriverMsg]
-    onSetMessages(nextMessages)
+    setMessages(nextMessages)
     setDriverInput('')
 
     // Aggregate narrative for case record
@@ -825,7 +815,7 @@ function Chat({
         language
       })
 
-      onSetMessages((prev) => [
+      setMessages((prev) => [
         ...prev,
         { sender: 'bot', text: response.reply }
       ])
@@ -856,7 +846,7 @@ function Chat({
         language === 'sw'
           ? 'Nimehifadhi maelezo yako dere. Unaweza kuendelea kueleza ama ubonyeze "Proceed to Verification" hapa chini tukague ushahidi wako.'
           : 'I have recorded your trip details. You can continue adding details or tap "Proceed to Verification" below to audit your evidence.'
-      onSetMessages((prev) => [
+      setMessages((prev) => [
         ...prev,
         { sender: 'bot', text: fallbackMsg }
       ])
@@ -918,7 +908,7 @@ function Chat({
   return (
     <>
       <Header step={steps[1]} onMenu={menu} onBack={() => go(2)} activeCase={activeCase} />
-      <main className="flex flex-1 flex-col px-4 py-4 md:px-5 md:py-5 max-h-[calc(100dvh-120px)] md:max-h-none overflow-hidden">
+      <main className="flex flex-1 flex-col px-5 py-5 max-h-[82vh] overflow-hidden">
         <div className="mb-3 flex items-center justify-between text-xs text-slate-500 shrink-0">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A]">
@@ -1115,9 +1105,7 @@ function Chat({
           </div>
         </div>
       </main>
-      <div className="hidden md:block">
-        <Footer />
-      </div>
+      <Footer />
     </>
   )
 }
@@ -2348,9 +2336,6 @@ export default function Page() {
   const [evidenceHeld, setEvidenceHeld] = useState<string[]>([])
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null)
   const [uploadTargetDoc, setUploadTargetDoc] = useState<string | null>(null)
-  // Conversational intake messages & language (preserved across screen navigation)
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatLanguage, setChatLanguage] = useState<'en' | 'sw'>('en')
   // OCR state: facts extracted from uploaded images / pasted notice text
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null)
   const [ocrLoading, setOcrLoading] = useState(false)
@@ -2423,8 +2408,6 @@ export default function Page() {
   // Dynamic Evidence Reset Handler ("Start Another Case" & Drawer "Active Appeal / Start New")
   const startNewCase = () => {
     setNarrative('')
-    setChatMessages([])
-    setChatLanguage('en')
     setNoticeText('Fare or payment dispute')
     setAttachedFileName(null)
     setUploadTargetDoc(null)
@@ -2464,8 +2447,6 @@ export default function Page() {
       setCasePlatform('Bolt')
       setNoticeText('Fare or payment dispute')
       setNarrative('')
-      setChatMessages([])
-      setChatLanguage('en')
       setEvidenceHeld([])
       setAttachedFileName(null)
       setUploadTargetDoc(null)
@@ -2921,7 +2902,7 @@ export default function Page() {
         </aside>
 
         {/* Wizard Main Column (Right on Desktop, Full Width on Mobile) */}
-        <div className="col-span-12 md:col-span-8 lg:col-span-8 flex flex-col min-h-screen md:min-h-[640px] w-full bg-[#F8FAFC] md:bg-white md:rounded-3xl md:border md:border-slate-200 md:shadow-lg md:overflow-hidden">
+        <div className="col-span-12 md:col-span-8 lg:col-span-8 flex flex-col min-h-screen md:min-h-[640px] w-full bg-[#F8FAFC] md:bg-white md:rounded-3xl md:border md:border-slate-200 md:shadow-lg overflow-hidden">
           <div className="flex-1 flex flex-col">
             {screen === 0 && <Splash go={go} activeCase={activeCaseRecord} />}
             {screen === 1 && (
@@ -3040,10 +3021,6 @@ export default function Page() {
                 onTriggerUpload={triggerFileUpload}
                 attachedFileName={attachedFileName}
                 activeCase={activeCaseRecord}
-                messages={chatMessages}
-                onSetMessages={setChatMessages}
-                language={chatLanguage}
-                onSetLanguage={setChatLanguage}
               />
             )}
             {screen === 4 && (
