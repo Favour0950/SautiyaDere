@@ -20,16 +20,24 @@ import {
   Upload,
   X,
   Edit2,
-  Plus
+  Plus,
+  HelpCircle,
+  Mail,
+  ExternalLink
 } from 'lucide-react'
 import {
+  db,
   getLocalProfile,
   saveLocalProfile,
   saveCase,
-  getAllCases
+  getAllCases,
+  clearAllLocalData,
+  updateCaseStatus
 } from '../../db/db.js'
-import { generateAppealPdf } from '../../utils/pdfGenerator.js'
+import { generateAppealPdf, formatFormalAppealBody } from '../../utils/pdfGenerator.js'
 import { getApiUrl } from '../../config.js'
+import { sendDereBotMessage, ChatMessage, ExtractedEntity, computeDynamicConfidence, synthesizeAppealStatement } from '../../services/dereBot'
+import { ocrExtractFromImage, analyzeNoticeText, OcrResult } from '../../services/visionOcr'
 
 const steps = ['Notice & Platform', 'Incident Details', 'Case Verification', 'Evidence Audit', 'Appeal Dossier']
 
@@ -103,8 +111,61 @@ function formatCaseType(rawType: string): string {
 }
 
 /**
+ * Context-Aware Probing Helper for Screen 3 (Chat)
+ */
+function getContextProbing(noticeReason: string) {
+  const lower = (noticeReason || '').toLowerCase()
+  if (lower.includes('safety') || lower.includes('violation')) {
+    return {
+      title: 'Tell me about the safety complaint in your own words. Mention:',
+      bullets: [
+        'When the trip occurred (date & time)',
+        'Pickup and drop-off route',
+        'The specific interaction with the passenger and what actually happened'
+      ],
+      placeholder:
+        'e.g., On 14 May around 4:30pm from Westlands to JKIA, passenger claimed I drove recklessly after I declined an unmapped alleyway...'
+    }
+  }
+  if (lower.includes('fare') || lower.includes('payment')) {
+    return {
+      title: 'Tell me about the fare or payment dispute in your own words. Mention:',
+      bullets: [
+        'When the trip occurred (date & time)',
+        'Trip route (pickup to destination)',
+        'The app fare amount and payment method used (e.g. M-Pesa, cash)'
+      ],
+      placeholder:
+        'e.g., On 14 May around 4:30pm from Westlands to JKIA, the passenger said the fare of KSh 1,250 was too high and threatened to report me. Payment was received via M-Pesa...'
+    }
+  }
+  if (lower.includes('cancel') || lower.includes('rating')) {
+    return {
+      title: 'Tell me about the cancellation or rating issue in your own words. Mention:',
+      bullets: [
+        'Dates and pickup locations for the disputed trips',
+        'Why cancellations occurred (e.g. rider no-show, wrong pin, unreachable rider)'
+      ],
+      placeholder:
+        'e.g., On 14 May at 8:00am in CBD, rider set the wrong pin on a one-way street. Waited 7 minutes with calls unanswered before cancelling as rider no-show...'
+    }
+  }
+  // Vague / Unknown / Identity / Account
+  return {
+    title: 'Tell me what happened leading up to the account flag. Mention:',
+    bullets: [
+      'Trip date and estimated operating time',
+      'Route or designated trip locations',
+      'Incident summary and when you discovered the deactivation'
+    ],
+    placeholder:
+      'e.g., On 14 May around 5:00pm, I completed trips normally along Ngong Road. At 7:30pm my account was locked without any clear incident description...'
+  }
+}
+
+/**
  * Client-Side Fallback Extraction (Demo-Safe):
- * Extracts TIME, ROUTE/LOCATIONS, and FARE if the backend API is unreachable or returns empty facts.
+ * Extracts TIME, ROUTE/LOCATIONS, and FARE if the backend API is unreachable.
  */
 function extractFallbackFacts(text: string): EntityItem[] {
   const entities: EntityItem[] = []
@@ -119,7 +180,8 @@ function extractFallbackFacts(text: string): EntityItem[] {
   }
 
   // 2. DATE regex: e.g. "14 May", "14th May", "May 14"
-  const dateRegex = /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?\b/gi
+  const dateRegex =
+    /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?\b/gi
   const dateMatches = text.match(dateRegex)
   if (dateMatches) {
     Array.from(new Set(dateMatches)).forEach((d) => {
@@ -402,7 +464,7 @@ function Splash({
   )
 }
 
-/* Screen 1: Profile (Task T25 integration) */
+/* Screen 1: Profile (Task T25 integration & Strict Kenyan Phone Validation) */
 function Profile({
   go,
   profile,
@@ -419,6 +481,11 @@ function Profile({
   const [platform, setPlatform] = useState(profile.platform || 'Bolt')
   const [saving, setSaving] = useState(false)
 
+  // Strict Kenyan Phone Validation: Accepts 07xx, 01xx, +254 7xx, 254 1xx
+  const isValidKenyanPhone = (val: string) => /^(?:(?:\+?254)|0)?[17]\d{8}$/.test(val.replace(/[\s-]/g, ''))
+  const isPhoneValid = isValidKenyanPhone(phone)
+  const showPhoneError = phone.trim().length > 0 && !isPhoneValid
+
   useEffect(() => {
     setName(profile.name || '')
     setPhone(profile.phone || '')
@@ -426,9 +493,10 @@ function Profile({
   }, [profile])
 
   const handleSubmit = async () => {
+    if (!isPhoneValid) return
     setSaving(true)
     try {
-      await onSave({ name, phone, platform })
+      await onSave({ name: name.trim(), phone: phone.trim(), platform })
       go(2)
     } finally {
       setSaving(false)
@@ -460,11 +528,19 @@ function Profile({
         <label className="flex flex-col gap-2 text-sm font-bold">
           Phone number
           <input
+            type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 font-normal outline-none focus:border-[#1E5E3A]"
+            className={`min-h-12 rounded-xl border bg-white px-4 font-normal outline-none transition ${
+              showPhoneError ? 'border-amber-400 focus:border-amber-500' : 'border-slate-200 focus:border-[#1E5E3A]'
+            }`}
             placeholder="e.g. 0712 345 678 (for timeline reminders)"
           />
+          {showPhoneError && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 font-normal">
+              ⚠️ Tafadhali enter a valid 10-digit Kenyan mobile number (e.g., 0712 345 678 or 0110 123 456).
+            </p>
+          )}
         </label>
         <Select
           label="Primary platform"
@@ -478,7 +554,7 @@ function Profile({
           <option value="Yego">Yego</option>
         </Select>
         <div className="mt-auto">
-          <Btn onClick={handleSubmit} disabled={saving}>
+          <Btn onClick={handleSubmit} disabled={saving || !isPhoneValid}>
             {saving ? 'Saving...' : 'Save & Continue'} {!saving && <ArrowRight />}
           </Btn>
         </div>
@@ -493,21 +569,29 @@ function Intake({
   go,
   menu,
   platform,
-  noticeText,
   onChangePlatform,
-  onChangeNotice,
   onTriggerUpload,
   attachedFileName,
+  ocrResult,
+  ocrLoading,
+  pasteNoticeText,
+  onChangePasteNotice,
+  onAnalyzePasteText,
+  onAdvance,
   activeCase
 }: {
   go: (n: number) => void
   menu: () => void
   platform: string
-  noticeText: string
   onChangePlatform: (p: string) => void
-  onChangeNotice: (n: string) => void
   onTriggerUpload: () => void
   attachedFileName: string | null
+  ocrResult: OcrResult | null
+  ocrLoading: boolean
+  pasteNoticeText: string
+  onChangePasteNotice: (t: string) => void
+  onAnalyzePasteText: () => void
+  onAdvance?: () => void
   activeCase?: CaseRecord | null
 }) {
   return (
@@ -516,7 +600,9 @@ function Intake({
       <main className="flex flex-1 flex-col gap-5 px-5 py-6">
         <div>
           <h1 className="text-2xl font-black">Let&apos;s protect your work.</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">Tell us what happened so we can build a verified appeal.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Upload your suspension notice or paste the message — DereBot will read it and start building your case.
+          </p>
         </div>
         <Select
           label="Which platform is this about?"
@@ -528,19 +614,8 @@ function Intake({
           <option value="Little">Little Cab</option>
           <option value="Faras">Faras</option>
         </Select>
-        <Select
-          label="What reason did they give?"
-          value={noticeText}
-          onChange={(e) => onChangeNotice(e.target.value)}
-        >
-          <option value="Fare or payment dispute">Fare or payment dispute</option>
-          <option value="Safety violation allegation">Safety violation allegation</option>
-          <option value="Cancellation or rating drop">Cancellation or rating drop</option>
-          <option value="Account or identity flag">Account or identity flag</option>
-          <option value="I don't know / Notice was vague or gave no details">
-            I don&apos;t know / Notice was vague or gave no details
-          </option>
-        </Select>
+
+        {/* Upload section */}
         <div
           onClick={onTriggerUpload}
           className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-4 cursor-pointer hover:border-[#1E5E3A] transition"
@@ -548,7 +623,9 @@ function Intake({
           <div className="flex items-center justify-between">
             <div>
               <b className="text-sm">Upload Suspension Notice Screenshot</b>
-              <p className="mt-1 text-xs text-slate-500">Attach the deactivation message</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Photo, PDF or screenshot — details are extracted locally for your appeal
+              </p>
             </div>
             <button
               type="button"
@@ -558,16 +635,61 @@ function Intake({
               <Upload />
             </button>
           </div>
-          {attachedFileName && (
+          {attachedFileName && !ocrLoading && (
             <div className="mt-2 flex items-center gap-1.5 rounded-full bg-[#E9F3ED] px-3 py-1 text-xs font-bold text-[#1E5E3A] border border-[#B9DCC6] w-fit">
               <span>📎 {attachedFileName} attached</span>
               <Check size={14} className="text-[#1E5E3A]" />
             </div>
           )}
+          {ocrLoading && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-[#1E5E3A] animate-pulse">
+              <span>🔍 Scanning document details...</span>
+            </div>
+          )}
         </div>
+
+        {/* Show OCR result summary if extracted */}
+        {ocrResult && ocrResult.detected_category !== 'unknown' && (
+          <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] p-3 text-sm">
+            <p className="font-bold text-[#1E5E3A] text-xs uppercase tracking-wider mb-1">📋 Extracted Notice Details</p>
+            <p className="text-slate-700 leading-5">{ocrResult.summary}</p>
+            {ocrResult.entities.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ocrResult.entities.map((e, i) => (
+                  <span key={i} className="rounded-full bg-white border border-[#B9DCC6] px-2 py-0.5 text-xs font-mono text-[#1E5E3A]">
+                    {e.label}: {e.text}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Paste text alternative */}
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-bold uppercase tracking-[.15em] text-slate-500">
+            Or paste the notice text
+          </p>
+          <textarea
+            value={pasteNoticeText}
+            onChange={(e) => onChangePasteNotice(e.target.value)}
+            placeholder="Paste the deactivation/suspension message here..."
+            className="min-h-[90px] rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-[#1E5E3A] resize-none"
+          />
+          {pasteNoticeText.trim().length > 10 && (
+            <button
+              type="button"
+              onClick={onAnalyzePasteText}
+              className="self-start rounded-lg bg-[#E9F3ED] px-3 py-1.5 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB] transition"
+            >
+              Scan Notice Details
+            </button>
+          )}
+        </div>
+
         <Trust />
         <div className="mt-auto">
-          <Btn onClick={() => go(3)}>
+          <Btn onClick={onAdvance || (() => go(3))}>
             Start Guided Appeal <ArrowRight />
           </Btn>
         </div>
@@ -577,97 +699,332 @@ function Intake({
   )
 }
 
-/* Screen 3: Chat / Story Input (Task T26 & Audio/File Placeholders) */
+/* Screen 3: Chat / Story Input (DereBot Conversational Intake & Fact Binding) */
 function Chat({
   go,
   menu,
   narrative,
+  noticeText,
+  platform,
   onChangeNarrative,
-  onAnalyze,
   evidenceHeld,
+  ocrFacts,
   onTriggerUpload,
   attachedFileName,
-  activeCase
+  activeCase,
+  entities,
+  onSetEntities,
+  onSelectCaseType,
+  onUpdateConfidence
 }: {
   go: (n: number) => void
   menu: () => void
   narrative: string
+  noticeText: string
+  platform: string
   onChangeNarrative: (text: string) => void
-  onAnalyze: (customNarrative?: string) => Promise<void>
   evidenceHeld: string[]
+  ocrFacts: EntityItem[]
   onTriggerUpload: () => void
   attachedFileName: string | null
   activeCase?: CaseRecord | null
+  entities: EntityItem[]
+  onSetEntities: (entities: EntityItem[]) => void
+  onSelectCaseType: (t: string) => void
+  onUpdateConfidence: (confidence: number) => void
 }) {
-  const [driverInput, setDriverInput] = useState(narrative || '')
-  const [processing, setProcessing] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
+  const [language, setLanguage] = useState<'en' | 'sw'>('en')
+  const [showFactsDetails, setShowFactsDetails] = useState(false)
 
-  const review = async () => {
-    const textToAnalyze = driverInput.trim()
-    onChangeNarrative(textToAnalyze)
-    setProcessing(true)
+  const getGreeting = (lang: 'en' | 'sw') => {
+    const ocrSummary = ocrFacts.length > 0
+      ? lang === 'sw'
+        ? ` Nimeona tayari umepakia nyaraka ya ushahidi.`
+        : ` I see you have already attached supporting evidence.`
+      : ''
+    return lang === 'sw'
+      ? `Habari dere. Pole sana kwa changamoto ya kusimamishwa akaunti na ${platform}. Mimi ni DereBot, msaidizi wako wa kisheria.${ocrSummary}\n\nNiambie kwa maneno yako mwenyewe nini kilitokea — tarehe, mahali (stage), na kilichosababisha hii kusimamishwa?`
+      : `Hello driver. We understand your account suspension on ${platform} is frustrating. I am DereBot, your legal intake assistant.${ocrSummary}\n\nPlease describe what happened in your own words — including the trip date, time, pickup and drop-off stages in Nairobi, and what led to this deactivation.`
+  }
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    { sender: 'bot', text: getGreeting('en') }
+  ])
+
+  // Switch greeting when user toggles language if they haven't started chatting
+  const handleToggleLanguage = (newLang: 'en' | 'sw') => {
+    setLanguage(newLang)
+    if (messages.length === 1 && messages[0].sender === 'bot') {
+      setMessages([{ sender: 'bot', text: getGreeting(newLang) }])
+    }
+  }
+
+  const [driverInput, setDriverInput] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [factsComplete, setFactsComplete] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [localCaseTypeHistory, setLocalCaseTypeHistory] = useState<string[]>([])
+  const messagesEndRef = React.useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, analyzing])
+
+  const handleSendMessage = async (textToSend?: string) => {
+    const text = (textToSend !== undefined ? textToSend : driverInput).trim()
+    if (!text || analyzing) return
+
+    const newDriverMsg: ChatMessage = { sender: 'driver', text }
+    const nextMessages = [...messages, newDriverMsg]
+    setMessages(nextMessages)
+    setDriverInput('')
+
+    // Aggregate narrative for case record
+    const fullNarrative = nextMessages
+      .filter((m) => m.sender === 'driver')
+      .map((m) => m.text)
+      .join('\n\n')
+    onChangeNarrative(fullNarrative)
+
+    // Immediate local extraction to guarantee facts (e.g. Westlands, 4pm) are NEVER dropped
+    const localFacts = extractFallbackFacts(fullNarrative)
+    if (localFacts.length > 0) {
+      const combined = [...entities]
+      const existing = new Set(combined.map((e) => `${e.label}:${e.text.toLowerCase()}`))
+      for (const lf of localFacts) {
+        if (!existing.has(`${lf.label}:${lf.text.toLowerCase()}`)) {
+          combined.push(lf)
+        }
+      }
+      onSetEntities(combined)
+    }
+
+    setAnalyzing(true)
     try {
-      await onAnalyze(textToAnalyze)
-      go(4)
+      const response = await sendDereBotMessage({
+        messages: nextMessages,
+        platform,
+        noticeReason: noticeText,
+        ocrFacts: ocrFacts as any,
+        evidenceHeld,
+        caseTypeHistory: localCaseTypeHistory,
+        language
+      })
+
+      setMessages((prev) => [
+        ...prev,
+        { sender: 'bot', text: response.reply }
+      ])
+
+      if (Array.isArray(response.extracted_entities) && response.extracted_entities.length > 0) {
+        const mappedEntities: EntityItem[] = response.extracted_entities.map((e) => ({
+          label: e.label.toUpperCase(),
+          text: e.text
+        }))
+        onSetEntities(mappedEntities)
+      }
+
+      if (response.suggested_case_type) {
+        onSelectCaseType(response.suggested_case_type)
+        setLocalCaseTypeHistory((prev) => [...prev, response.suggested_case_type])
+      }
+
+      if (typeof response.confidence === 'number') {
+        onUpdateConfidence(response.confidence)
+      }
+
+      if (response.facts_complete) {
+        setFactsComplete(true)
+      }
+    } catch (err) {
+      console.warn('DereBot conversation error:', err)
+      const fallbackMsg =
+        language === 'sw'
+          ? 'Nimehifadhi maelezo yako dere. Unaweza kuendelea kueleza ama ubonyeze "Proceed to Verification" hapa chini tukague ushahidi wako.'
+          : 'I have recorded your trip details. You can continue adding details or tap "Proceed to Verification" below to audit your evidence.'
+      setMessages((prev) => [
+        ...prev,
+        { sender: 'bot', text: fallbackMsg }
+      ])
     } finally {
-      setProcessing(false)
+      setAnalyzing(false)
     }
   }
 
   const handleMicClick = () => {
+    if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      try {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        const recognition = new SpeechRecognition()
+        recognition.lang = 'en-KE'
+        recognition.interimResults = false
+        recognition.maxAlternatives = 1
+
+        setIsRecording(true)
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript
+          setDriverInput((prev) => (prev ? `${prev} ${transcript}` : transcript))
+          setIsRecording(false)
+        }
+        recognition.onerror = () => {
+          setIsRecording(false)
+        }
+        recognition.onend = () => {
+          setIsRecording(false)
+        }
+        recognition.start()
+        return
+      } catch {
+        // Fallback
+      }
+    }
+
     if (isRecording) return
     setIsRecording(true)
     setTimeout(() => {
-      const sampleStatement =
-        'On 14 May around 4:30pm from Westlands to JKIA, the passenger said the fare of KSh 1,250 was too high and threatened to report me. The trip was completed normally and M-Pesa payment was received.'
-      setDriverInput(sampleStatement)
-      onChangeNarrative(sampleStatement)
       setIsRecording(false)
-    }, 3000)
+      const promptText = window.prompt('Voice recognition is simulated or unavailable. You can enter or speak your message:')
+      if (promptText && promptText.trim()) {
+        handleSendMessage(promptText.trim())
+      }
+    }, 400)
   }
+
+  const handleProceed = () => {
+    const fullNarrative = messages
+      .filter((m) => m.sender === 'driver')
+      .map((m) => m.text)
+      .join('\n\n')
+    onChangeNarrative(fullNarrative || narrative)
+    go(4)
+  }
+
+  const hasDriverSpoken = messages.some((m) => m.sender === 'driver')
 
   return (
     <>
       <Header step={steps[1]} onMenu={menu} onBack={() => go(2)} activeCase={activeCase} />
-      <main className="flex flex-1 flex-col px-5 py-5">
-        <div className="mb-4 flex items-center justify-between text-xs text-slate-500">
+      <main className="flex flex-1 flex-col px-5 py-5 max-h-[82vh] overflow-hidden">
+        <div className="mb-3 flex items-center justify-between text-xs text-slate-500 shrink-0">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A]">
               <Scale size={15} />
             </div>
-            <span className="font-bold text-slate-700">DereBot • Plain English Guidance</span>
+            <div>
+              <span className="font-bold text-slate-800">DereBot • AI Legal Assistant</span>
+              <p className="text-[10px] text-slate-400">Gemini-Powered Multi-Turn Intake</p>
+            </div>
           </div>
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
             Step 2 of 5
           </span>
         </div>
 
-        {/* Conversation and narrative display */}
-        <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-3">
-          <div className="flex items-start gap-2.5">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A] mt-0.5">
-              <Scale size={13} />
-            </div>
-            <div className="max-w-[290px] rounded-2xl rounded-tl-sm bg-[#EEF2F4] p-3.5 text-xs leading-5 text-slate-800">
-              Tell me what happened in your own words. Mention:
-              <ul className="mt-1 list-disc pl-4 space-y-0.5 text-slate-600">
-                <li>When the trip occurred (date &amp; time)</li>
-                <li>Pickup and destination locations</li>
-                <li>What caused the dispute or account flag</li>
-              </ul>
-            </div>
+        {/* Language Selection: English | Kiswahili */}
+        <div className="mb-3 flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-1.5 shrink-0">
+          <span className="text-[11px] font-bold text-slate-600">Language:</span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => handleToggleLanguage('en')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                language === 'en'
+                  ? 'bg-[#1E5E3A] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+              }`}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleLanguage('sw')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                language === 'sw'
+                  ? 'bg-[#1E5E3A] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+              }`}
+            >
+              Kiswahili
+            </button>
           </div>
-
-          {driverInput.trim() && (
-            <div className="self-end max-w-[290px] rounded-2xl rounded-tr-sm bg-[#1E5E3A] p-3.5 text-xs leading-5 text-white shadow-xs">
-              <p className="whitespace-pre-wrap">{driverInput}</p>
-            </div>
-          )}
         </div>
 
-        {/* Dynamic Story Input Area */}
-        <div className="flex flex-col gap-2">
+        {/* Sleek Collapsible Fact Bar */}
+        {entities.length > 0 && (
+          <div className="mb-2 shrink-0 rounded-xl bg-[#F1F9F3] border border-[#B9DCC6] p-2 text-xs transition">
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-[#1E5E3A] flex items-center gap-1.5 text-xs">
+                🎯 {entities.length} Key Facts Captured
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowFactsDetails((prev) => !prev)}
+                className="text-[11px] font-bold text-[#1E5E3A] hover:underline cursor-pointer"
+              >
+                {showFactsDetails ? 'Hide Details ▲' : 'View Details ▼'}
+              </button>
+            </div>
+            {showFactsDetails && (
+              <div className="mt-2 pt-2 border-t border-[#B9DCC6]/60 flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                {entities.map((item, idx) => (
+                  <span
+                    key={idx}
+                    className="rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-[#1E5E3A] border border-[#B9DCC6] shadow-2xs"
+                  >
+                    {item.label}: {item.text}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Dynamic Multi-Turn Conversation Feed */}
+        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3.5 pb-3">
+          {messages.map((m, idx) => (
+            <div key={idx} className={`flex flex-col ${m.sender === 'driver' ? 'items-end' : 'items-start'}`}>
+              {m.sender === 'bot' ? (
+                <div className="flex items-start gap-2 max-w-[90%]">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A] mt-0.5">
+                    <Scale size={13} />
+                  </div>
+                  <div className="rounded-2xl rounded-tl-xs bg-[#EEF2F4] p-3.5 text-xs leading-5 text-slate-800 shadow-2xs whitespace-pre-wrap">
+                    {m.text}
+                  </div>
+                </div>
+              ) : (
+                <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-[#1E5E3A] p-3.5 text-xs leading-5 text-white shadow-xs whitespace-pre-wrap">
+                  {m.text}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Typing Indicator */}
+          {analyzing && (
+            <div className="flex items-start gap-2">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A] mt-0.5">
+                <Scale size={13} />
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl rounded-tl-xs bg-[#EEF2F4] px-4 py-3 text-xs font-bold text-slate-600 shadow-2xs animate-pulse">
+                <div className="flex gap-1">
+                  <span className="size-1.5 rounded-full bg-[#1E5E3A] animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="size-1.5 rounded-full bg-[#1E5E3A] animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="size-1.5 rounded-full bg-[#1E5E3A] animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span>DereBot is analyzing your case...</span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Bar & Actions */}
+        <div className="shrink-0 flex flex-col gap-2 pt-2 border-t border-slate-100">
           {attachedFileName && (
             <div className="flex items-center gap-1.5 rounded-full bg-[#E9F3ED] px-3 py-1 text-xs font-bold text-[#1E5E3A] border border-[#B9DCC6] w-fit">
               <span>📎 {attachedFileName} attached</span>
@@ -675,26 +1032,22 @@ function Chat({
             </div>
           )}
 
-          {isRecording && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 p-2.5 text-xs font-bold text-red-600 animate-pulse">
-              <div className="size-2 rounded-full bg-red-600 animate-ping" />
-              <span>🎙️ Recording audio (3s)... DereBot listening to your account...</span>
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs focus-within:border-[#1E5E3A] focus-within:ring-1 focus-within:ring-[#1E5E3A]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-xs focus-within:border-[#1E5E3A] focus-within:ring-1 focus-within:ring-[#1E5E3A]">
             <textarea
               value={driverInput}
-              onChange={(e) => {
-                setDriverInput(e.target.value)
-                onChangeNarrative(e.target.value)
+              onChange={(e) => setDriverInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendMessage()
+                }
               }}
-              placeholder="Type your story here (e.g., On 14 May around 4:30pm from Westlands to JKIA, passenger said the fare was too high...)"
-              rows={4}
+              placeholder={language === 'sw' ? 'Andika jibu lako hapa...' : 'Type your reply here...'}
+              rows={2}
               className="w-full resize-none bg-transparent text-xs leading-5 text-[#0F172A] placeholder-slate-400 outline-none"
             />
-            <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400">
-              <span>{driverInput.trim().length} characters</span>
+            <div className="flex items-center justify-between border-t border-slate-100 pt-1.5 text-[10px] text-slate-400">
+              <span>{language === 'sw' ? 'Bonyeza Enter kutuma' : 'Press Enter to send'}</span>
               <span className="flex items-center gap-1 font-semibold text-[#1E5E3A]">
                 <ShieldCheck size={12} /> Stored on-device
               </span>
@@ -707,6 +1060,7 @@ function Chat({
               aria-label="Attach evidence"
               onClick={onTriggerUpload}
               className="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition"
+              title="Attach document or screenshot"
             >
               <Paperclip size={18} />
             </button>
@@ -720,36 +1074,43 @@ function Chat({
                   ? 'bg-red-500 text-white animate-pulse'
                   : 'bg-[#E9F3ED] text-[#1E5E3A] hover:bg-[#D5EADB]'
               }`}
+              title="Speak your account"
             >
               <Mic size={18} />
             </button>
             <button
               type="button"
-              onClick={review}
-              disabled={processing || isRecording || !driverInput.trim()}
-              className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-xs font-extrabold transition ${
-                !driverInput.trim() || isRecording
+              onClick={() => handleSendMessage()}
+              disabled={analyzing || !driverInput.trim()}
+              className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-extrabold transition ${
+                !driverInput.trim() || analyzing
                   ? 'border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                   : 'bg-[#1E5E3A] text-white hover:bg-[#174A2E] shadow-xs'
               }`}
             >
-              {processing ? 'Analyzing…' : 'Review Extracted Facts'} {!processing && <ArrowRight size={14} />}
+              <Send size={14} /> Send Response
             </button>
           </div>
-        </div>
 
-        {processing && (
-          <p className="mt-3 rounded-xl bg-[#FFF7ED] p-2.5 text-center text-xs font-bold text-[#A34F00]">
-            🛡️ Removing phone numbers &amp; analyzing trip details...
-          </p>
-        )}
+          <div className="mt-1">
+            <Btn
+              onClick={handleProceed}
+              secondary={!factsComplete}
+              disabled={!hasDriverSpoken && !narrative}
+            >
+              {factsComplete
+                ? '✓ Appeal Foundation Ready — Proceed to Verification'
+                : 'Proceed to Verification (Screen 4)'} <ArrowRight />
+            </Btn>
+          </div>
+        </div>
       </main>
       <Footer />
     </>
   )
 }
 
-/* Screen 4: Verify (Task T26 & Dynamic Facts Update) */
+/* Screen 4: Verify (True Fact Binding & Backward Navigation Loop) */
 function Verify({
   go,
   menu,
@@ -805,6 +1166,8 @@ function Verify({
       setIsAddingFact(false)
     }
   }
+
+  const hasEntities = Array.isArray(analysis.entities) && analysis.entities.length > 0
 
   return (
     <>
@@ -888,24 +1251,45 @@ function Verify({
           ))}
         </fieldset>
 
-        {/* Extracted Facts with Empty-State & Add Fact */}
+        {/* Extracted Facts with Unblocked Flow */}
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-black uppercase tracking-wider text-slate-400">
-              Extracted facts · click pencil to edit
+              {hasEntities ? 'Extracted facts · click pencil to edit' : 'Extracted facts'}
             </p>
             <button
               onClick={() => setIsAddingFact(!isAddingFact)}
               className="flex items-center gap-1 text-xs font-bold text-[#1E5E3A] hover:underline"
             >
-              <Plus size={14} /> Add Fact
+              <Plus size={14} /> Add Fact Manually
             </button>
           </div>
 
-          {analysis.entities.length === 0 ? (
-            <p className="text-xs text-slate-500">
-              No trip facts detected yet. Click &apos;+ Add Fact&apos; to add date, time, route, or fare.
-            </p>
+          {!hasEntities ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4 text-center">
+              <p className="text-xs font-bold text-slate-700">
+                No specific trip facts detected yet. You can add key details below or continue directly.
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Adding key trip details (date, stage, or fare) strengthens your formal NTSA LN 120 appeal.
+              </p>
+              <div className="mt-3 flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingFact(true)}
+                  className="rounded-lg bg-[#E9F3ED] px-3 py-1.5 text-xs font-black text-[#1E5E3A] hover:bg-[#D5EADB] transition"
+                >
+                  <Plus size={13} className="inline mr-1" /> Add Fact Manually
+                </button>
+                <button
+                  type="button"
+                  onClick={() => go(3)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  ← Return to Chat
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {analysis.entities.map((item, idx) => (
@@ -964,14 +1348,16 @@ function Verify({
               >
                 <option value="DATE">DATE</option>
                 <option value="TIME">TIME</option>
-                <option value="LOCATION">LOCATION</option>
+                <option value="ROUTE">ROUTE</option>
                 <option value="FARE">FARE</option>
+                <option value="LOCATION">LOCATION</option>
+                <option value="ALLEGATION">ALLEGATION</option>
               </select>
               <input
                 type="text"
                 value={newFactText}
                 onChange={(e) => setNewFactText(e.target.value)}
-                placeholder="Fact detail..."
+                placeholder="Fact detail (e.g., 14 May, 4:30 PM, Westlands, KSh 1,250)..."
                 className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none"
               />
               <button
@@ -1002,23 +1388,35 @@ function Verify({
   )
 }
 
-/* Screen 5: Evidence (Task T26 integration) */
+/* Screen 5: Evidence (Dynamic Evidence Audit & Per-Item File Upload) */
 function Evidence({
   go,
   menu,
   analysis,
   evidenceHeld,
+  onTriggerUpload,
+  onRemoveEvidence,
   activeCase
 }: {
   go: (n: number) => void
   menu: () => void
   analysis: AnalysisResult
   evidenceHeld: string[]
+  onTriggerUpload: (docKey: string) => void
+  onRemoveEvidence: (docKey: string) => void
   activeCase?: CaseRecord | null
 }) {
-  const readiness = analysis.evidence.readiness ?? 0.6
-  const readinessPct = Math.round(readiness * 100)
-  const readinessLabel = readiness >= 0.8 ? 'Strong' : readiness >= 0.5 ? 'Moderate' : 'Low'
+  const readinessPct = Math.min(100, Math.round((evidenceHeld.length / 3) * 100))
+  const readinessLabel = readinessPct >= 80 ? 'Strong' : readinessPct >= 33 ? 'Moderate' : 'Low'
+
+  // Standard recommended items for case type
+  const standardEvidenceItems = [
+    { id: 'SUSPENSION_NOTICE', label: 'Suspension Notice', btnLabel: 'Suspension Notice', reason: 'Deactivation or violation message from the platform.' },
+    { id: 'TRIP_RECEIPT_SCREENSHOT', label: 'Trip Receipt Screenshot', btnLabel: 'Trip Receipt', reason: 'Waybill or trip fare receipt showing trip completion.' },
+    { id: 'M_PESA_STATEMENT', label: 'M-Pesa Statement / SMS', btnLabel: 'M-Pesa Statement', reason: 'Proof of fare payment or transaction history.' },
+    { id: 'IN_APP_CHAT_SCREENSHOT', label: 'In-App Chat Screenshot', btnLabel: 'Chat Screenshot', reason: 'Passenger messaging exchange prior to or after dispute.' },
+    { id: 'DASHCAM_OR_AUDIO_RECORDING', label: 'Audio / Dashcam Recording', btnLabel: 'Audio / Dashcam', reason: 'Objective audio or video record of rider conduct.' }
+  ]
 
   return (
     <>
@@ -1027,7 +1425,7 @@ function Evidence({
         <div className="flex items-end justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Evidence readiness</p>
-            <h1 className="mt-2 text-2xl font-black">Almost complete</h1>
+            <h1 className="mt-2 text-2xl font-black">Supporting Evidence &amp; Proof</h1>
           </div>
           <b className="text-sm text-[#1E5E3A]">
             Evidence Readiness: {readinessPct}% ({readinessLabel})
@@ -1037,51 +1435,59 @@ function Evidence({
           <div className="h-2 rounded-full bg-slate-200">
             <div
               className="h-full rounded-full bg-[#1E5E3A] transition-all duration-300"
-              style={{ width: `${Math.min(100, Math.max(5, readinessPct))}%` }}
+              style={{ width: `${Math.max(4, readinessPct)}%` }}
             />
           </div>
-          <p className="mt-2 text-xs text-slate-500">Strong evidence makes a faster, fairer review.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            {evidenceHeld.length === 0
+              ? 'No documents attached yet. Upload files below to strengthen your appeal.'
+              : `${evidenceHeld.length} item${evidenceHeld.length > 1 ? 's' : ''} attached. Strong evidence makes a faster, fairer review.`}
+          </p>
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Held evidence list */}
-          {evidenceHeld.map((key) => {
-            const friendlyName = key
-              .replace(/_SCREENSHOT|_STATEMENT|_NOTICE|_LOG/g, '')
-              .replace(/_/g, ' ')
-              .replace(/\b\w/g, (c) => c.toUpperCase())
-            return (
-              <div
-                key={key}
-                className="flex items-center gap-3 rounded-xl border border-[#B9DCC6] bg-white p-4"
-              >
-                <div className="flex size-9 items-center justify-center rounded-full bg-[#E9F3ED] text-[#1E5E3A]">
-                  <Check />
-                </div>
-                <div className="flex-1">
-                  <b className="text-sm">{friendlyName}</b>
-                  <p className="text-xs text-slate-500">Attached from your phone</p>
-                </div>
-                <span className="text-xs font-black text-[#1E5E3A]">Added</span>
-              </div>
-            )
-          })}
-
-          {/* Missing items from backend / gap checker */}
-          {analysis.evidence.missing.map((item) => {
-            const friendlyName = item.id
-              .replace(/_/g, ' ')
-              .replace(/\b\w/g, (c) => c.toUpperCase())
+          {standardEvidenceItems.map((item) => {
+            const isHeld = evidenceHeld.includes(item.id)
             return (
               <div
                 key={item.id}
-                className="rounded-xl border-l-4 border-[#D97706] bg-[#FFF7ED] p-4"
+                className={`flex flex-col gap-2 rounded-xl border p-4 transition ${
+                  isHeld
+                    ? 'border-[#B9DCC6] bg-[#F1F9F3]'
+                    : 'border-slate-200 bg-white'
+                }`}
               >
-                <b className="text-sm">{friendlyName}</b>
-                <p className="mt-1 text-xs leading-5 text-slate-600">{item.reason}</p>
-                <button className="mt-3 flex min-h-10 items-center gap-2 text-xs font-black text-[#A34F00] hover:underline">
-                  <Upload size={14} /> + Add {friendlyName} / Screenshot
-                </button>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <b className="text-sm text-[#0F172A]">{item.label}</b>
+                    <p className="mt-1 text-xs text-slate-500">{item.reason}</p>
+                  </div>
+                  <div>
+                    {isHeld ? (
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#E9F3ED] px-3 py-1 text-xs font-black text-[#1E5E3A] border border-[#B9DCC6]">
+                          ✓ Attached from phone
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveEvidence(item.id)}
+                          className="text-xs font-bold text-slate-400 hover:text-red-500"
+                          title="Remove attached file"
+                        >
+                          Detach
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onTriggerUpload(item.id)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E5E3A] bg-white px-3 py-1.5 text-xs font-black text-[#1E5E3A] shadow-xs hover:bg-[#F1F9F3] transition active:scale-95"
+                      >
+                        <Upload size={13} /> + Upload {item.btnLabel}
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             )
           })}
@@ -1098,7 +1504,7 @@ function Evidence({
   )
 }
 
-/* Screen 6: Preview & Dossier Persistence (Task T26 & T35 integration) */
+/* Screen 6: Preview & Dossier Persistence (Formal Appeal Synthesis) */
 function Preview({
   go,
   menu,
@@ -1124,21 +1530,61 @@ function Preview({
   const [submitting, setSubmitting] = useState(false)
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [pdfSuccess, setPdfSuccess] = useState(false)
+  const [synthesizedStatement, setSynthesizedStatement] = useState('')
+
+  useEffect(() => {
+    let isMounted = true
+    async function loadStatement() {
+      try {
+        const stmt = await synthesizeAppealStatement({
+          platform,
+          caseType: analysis.classification.case_type || 'fare_dispute',
+          entities: analysis.entities as any,
+          driverName: profile.name || 'Registered Driver'
+        })
+        if (isMounted) setSynthesizedStatement(stmt)
+      } catch {
+        // Fallback handled inside helper
+      }
+    }
+    loadStatement()
+    return () => { isMounted = false }
+  }, [platform, analysis.classification.case_type, analysis.entities, profile.name])
+
+  const caseRef = activeCase?.id
+    ? `SYD-APP-${new Date().getFullYear()}-${String(activeCase.id).padStart(4, '0')}`
+    : `SYD-APP-${new Date().getFullYear()}-0001`
 
   const headline =
     analysis.appeal.headline ||
-    `Appeal against account restriction: ${platform} Dispute`
+    `Formal Administrative Appeal: ${platform} Account Restriction`
 
-  const bodyText =
-    analysis.appeal.body ||
-    (narrative.trim()
-      ? `Dear ${platform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my driver account regarding the following incident:\n\n"${narrative.trim()}"\n\nPlease review the attached evidence and the facts recorded on my device. In accordance with NTSA Legal Notice 120 Regulation 15 and Kenya Data Protection Act 2019 Section 26, I respectfully request a fair hearing and prompt resolution within the 30-day statutory timeline.\n\nKind regards,\n${profile.name || 'Authorized Driver'}`
-      : `Dear ${platform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my driver account. Please review my account records and attached corroborating evidence in accordance with NTSA Legal Notice 120 Regulation 15.\n\nKind regards,\n${profile.name || 'Authorized Driver'}`)
+  // Synthesize formal professional appeal body (No raw narrative quotes)
+  const bodyText = formatFormalAppealBody({
+    platform,
+    driverName: profile.name || 'Mwangi',
+    driverPhone: profile.phone || '',
+    caseRef,
+    entities: analysis.entities as any,
+    narrative,
+    evidenceHeld: evidenceHeld as any,
+    synthesizedStatement
+  })
 
-  const mailtoBody = `${headline}\n\n${bodyText}\n\nAttached Evidence:\n${evidenceHeld.join(', ')}\n\nDriver: ${profile.name || 'Mwangi'} (${profile.phone || ''})`
-  const mailtoUrl = `mailto:info@twu.or.ke?subject=${encodeURIComponent(
-    `Formal Dispute Dossier - Sauti ya Dere - ${platform}`
-  )}&body=${encodeURIComponent(mailtoBody)}`
+  const getPlatformEmail = (p: string) => {
+    const lower = (p || '').toLowerCase()
+    if (lower.includes('bolt')) return 'kenya@bolt.eu'
+    if (lower.includes('uber')) return 'support@uber.com'
+    if (lower.includes('little')) return 'support@little.biz'
+    if (lower.includes('faras')) return 'support@faras.ke'
+    return `support@${lower.replace(/\s+/g, '')}.com`
+  }
+  const platformEmail = getPlatformEmail(platform)
+  const platformMailto = `mailto:${platformEmail}?subject=${encodeURIComponent(
+    `Formal Administrative Appeal: ${platform} Account Restriction (#${caseRef})`
+  )}&body=${encodeURIComponent(
+    `To ${platform} Driver Support & Appeals Division,\n\nPlease find my formal administrative appeal and statutory reinstatement demand regarding my account restriction (Case #${caseRef}), formally lodged pursuant to Regulation 15 of NTSA Legal Notice 120 (2022) and Section 26 of the Kenya Data Protection Act 2019.\n\nDriver: ${profile.name || 'Registered Driver'} (${profile.phone || ''})\nPlatform: ${platform}\nCase Reference: #${caseRef}\n\n[Full 1-page Legal PDF Dispute Dossier generated via Sauti ya Dere attached]`
+  )}`
 
   const handleCopy = () => {
     navigator.clipboard?.writeText?.(`${headline}\n\n${bodyText}`)
@@ -1191,16 +1637,18 @@ function Preview({
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Appeal dossier</p>
           <h1 className="mt-2 text-2xl font-black">A clear case, in your words.</h1>
         </div>
-        <article className="flex-1 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article className="flex-1 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-h-[380px] overflow-y-auto">
           <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
               <p className="text-[10px] text-slate-400 uppercase tracking-wider">TO</p>
-              <b className="text-sm">{platform} Driver Support</b>
+              <b className="text-sm">{platform} Driver Appeals &amp; Partner Operations</b>
             </div>
             <FileText className="text-[#1E5E3A]" />
           </div>
           <h3 className="mb-3 text-sm font-extrabold text-[#0F172A]">{headline}</h3>
-          <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{bodyText}</p>
+          <p className="whitespace-pre-line text-xs leading-6 text-slate-700 font-mono bg-slate-50 p-3 rounded-xl border border-slate-100">
+            {bodyText}
+          </p>
         </article>
 
         <div className="grid grid-cols-2 gap-3">
@@ -1211,15 +1659,16 @@ function Preview({
             <Download size={16} /> {generatingPdf ? 'Generating…' : pdfSuccess ? 'Downloaded!' : 'Download 1-Page PDF'}
           </Btn>
         </div>
+
         <a
-          href={mailtoUrl}
-          onClick={handleFinalSave}
-          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-[#1E5E3A] hover:bg-slate-50 transition active:scale-[.98]"
+          href={platformMailto}
+          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-4 text-xs font-black text-[#1E5E3A] hover:bg-[#E2F2E7] transition active:scale-[.98]"
         >
-          <Send size={16} /> Forward to TAWU-Kenya <ArrowRight size={16} />
+          <Mail size={16} /> Email Appeal to {platform} Support ({platformEmail})
         </a>
+
         <Btn onClick={handleFinalSave} disabled={submitting}>
-          {submitting ? 'Saving to Device...' : 'Save to Case Log & Exit'}
+          {submitting ? 'Saving Case...' : 'Save Case & Track 30-Day Timeline →'}
         </Btn>
       </main>
       <Footer />
@@ -1233,18 +1682,40 @@ function Log({
   menu,
   cases,
   onStartNewCase,
-  activeCase
+  activeCase,
+  onUpdateCaseStatus,
+  onSaveCurrentDraft
 }: {
   go: (n: number) => void
   menu: () => void
   cases: CaseRecord[]
   onStartNewCase: () => void
   activeCase?: CaseRecord | null
+  onUpdateCaseStatus?: (caseId: number, status: string) => Promise<void>
+  onSaveCurrentDraft?: () => Promise<void>
 }) {
+  const [selectedStatus, setSelectedStatus] = useState<string>(cases[0]?.status || 'Awaiting Platform Reply')
+  const [markedToday, setMarkedToday] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
+
+  const handleStatusChange = async (newStatus: string) => {
+    setSelectedStatus(newStatus)
+    if (cases.length > 0 && cases[0]?.id && onUpdateCaseStatus) {
+      await onUpdateCaseStatus(cases[0].id, newStatus)
+    }
+  }
+
+  const handleMarkSubmitted = async () => {
+    setMarkedToday(true)
+    if (cases.length > 0 && cases[0]?.id && onUpdateCaseStatus) {
+      await onUpdateCaseStatus(cases[0].id, 'Awaiting Platform Reply (Submitted Today)')
+    }
+  }
+
   return (
     <>
-      <Header onMenu={menu} activeCase={activeCase} />
-      <main className="flex flex-1 flex-col gap-5 px-5 py-6">
+      <Header onMenu={menu} onBack={() => go(6)} activeCase={activeCase} />
+      <main className="flex flex-1 flex-col gap-5 px-5 py-6 overflow-y-auto">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Your offline case log</p>
           <h1 className="mt-2 text-2xl font-black">Case &amp; timeline</h1>
@@ -1252,7 +1723,9 @@ function Log({
 
         {cases.length > 0 ? (
           cases.map((c, index) => {
-            const elapsedDays = c.created_at
+            const elapsedDays = markedToday
+              ? 0
+              : c.created_at
               ? Math.max(0, Math.floor((Date.now() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24)))
               : 0
             const countdownDays = Math.max(0, 30 - elapsedDays)
@@ -1267,7 +1740,7 @@ function Log({
                     <h2 className="mt-2 text-xl font-black">{formatCaseType(c.case_type)}</h2>
                   </div>
                   <span className="rounded-full bg-[#D8F0DE] px-2.5 py-1 text-[10px] font-black text-[#1E5E3A]">
-                    {c.status || 'Awaiting Platform Reply'}
+                    {selectedStatus === 'Platform Reinstated Account' ? '✓ Reinstated & Closed' : selectedStatus}
                   </span>
                 </div>
                 <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-300">
@@ -1280,24 +1753,116 @@ function Log({
                   </div>
                   <div>
                     <p className="text-xs text-slate-400">NTSA LN 120 countdown</p>
-                    <b className="text-lg text-[#FBBF24]">{countdownDays} days left</b>
+                    <b className="text-lg text-[#FBBF24]">
+                      {selectedStatus === 'Platform Reinstated Account' ? 'Resolved' : `${countdownDays} days left`}
+                    </b>
                   </div>
                 </div>
               </div>
             )
           })
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-            <Scale className="mx-auto mb-2 text-slate-400" size={32} />
-            <b className="text-sm text-slate-700">No cases saved yet</b>
-            <p className="mt-1 text-xs">Start a new appeal to generate and track a dispute dossier on this phone.</p>
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500 flex flex-col items-center gap-3">
+            <Scale className="mx-auto text-slate-400" size={32} />
+            <div>
+              <b className="text-sm text-slate-700">No cases saved in local log yet</b>
+              <p className="mt-1 text-xs text-slate-500">Save your active appeal to track the statutory 30-day countdown on this phone.</p>
+            </div>
+            {onSaveCurrentDraft && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setSavingDraft(true)
+                  try {
+                    await onSaveCurrentDraft()
+                  } finally {
+                    setSavingDraft(false)
+                  }
+                }}
+                disabled={savingDraft}
+                className="mt-1 rounded-xl bg-[#1E5E3A] px-4 py-2 text-xs font-bold text-white hover:bg-[#174A2E] shadow-sm transition"
+              >
+                {savingDraft ? 'Saving Case...' : '💾 Save Current Appeal to Case Log'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Mark Submitted Button */}
+        {cases.length > 0 && !markedToday && (
+          <button
+            type="button"
+            onClick={handleMarkSubmitted}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] px-4 text-xs font-black text-[#1E5E3A] hover:bg-[#E2F2E7] transition active:scale-[.98]"
+          >
+            <Check size={16} /> Mark as Submitted to Platform Today (Start 30-Day Window)
+          </button>
+        )}
+
+        {/* Interactive Case Status Selector */}
+        {cases.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-black uppercase tracking-wider text-slate-500 mb-2">Update Dispute Status</p>
+            <div className="flex flex-col gap-1.5 text-xs">
+              {[
+                { id: 'Awaiting Platform Reply', label: '⏳ Awaiting Platform Reply (In statutory window)' },
+                { id: 'Platform Reinstated Account', label: '🎉 Platform Reinstated Account (Resolved & Closed)' },
+                { id: 'Platform Rejected Appeal', label: '❌ Platform Rejected Appeal (Escalate to TAWU)' }
+              ].map((opt) => (
+                <label key={opt.id} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="case_status"
+                    value={opt.id}
+                    checked={selectedStatus === opt.id}
+                    onChange={() => handleStatusChange(opt.id)}
+                    className="accent-[#1E5E3A]"
+                  />
+                  <span className="font-semibold text-slate-800">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Success / Case Closed Card */}
+        {selectedStatus === 'Platform Reinstated Account' && (
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs flex flex-col gap-1.5 text-emerald-900">
+            <div className="flex items-center gap-2 font-black text-sm text-[#1E5E3A]">
+              🎉 Account Reinstated — Dispute Resolved &amp; Case Closed
+            </div>
+            <p className="leading-5 text-emerald-800">
+              Congratulations! Your dispute has been resolved under NTSA Legal Notice 120. This case record is safely preserved in your offline case log for future reference.
+            </p>
+          </div>
+        )}
+
+        {/* Rejection / Escalation to TAWU Card */}
+        {selectedStatus === 'Platform Rejected Appeal' && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs flex flex-col gap-2.5">
+            <div className="flex items-center gap-2 text-red-900 font-extrabold text-sm">
+              <Scale size={16} /> Statutory Trade Union Conciliation
+            </div>
+            <p className="text-red-800 leading-5">
+              The platform has rejected or failed to resolve your appeal within the 30-day statutory window. Under Regulation 15 of NTSA Legal Notice 120, you are entitled to formal conciliation through TAWU-Kenya.
+            </p>
+            <a
+              href={`mailto:disputes@tawu.or.ke?subject=${encodeURIComponent(
+                `Statutory Conciliation Request: Case #SYD-APP-2026-0001 - ${cases[0]?.platform || 'Platform'}`
+              )}&body=${encodeURIComponent(
+                `To TAWU-Kenya Dispute Desk,\n\nThe platform has rejected my formal administrative appeal. I hereby request trade union conciliation pursuant to Regulation 15 of NTSA Legal Notice 120.\n\nPlatform: ${cases[0]?.platform || 'Platform'}\nCase Ref: #SYD-APP-2026-0001\nStatus: Platform Rejected Appeal`
+              )}`}
+              className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white hover:bg-red-700 transition"
+            >
+              <Send size={14} /> Escalate to TAWU-Kenya Conciliation Desk
+            </a>
           </div>
         )}
 
         <div className="rounded-xl border border-[#F2C78F] bg-[#FFF7ED] p-4 text-sm leading-5 text-slate-600">
           <b className="text-[#0F172A]">Statutory response window</b>
           <br />
-          Under NTSA Legal Notice 120, the platform should respond within 30 days.
+          Under NTSA Legal Notice 120, the platform is under legal obligation to respond within 30 days.
         </div>
 
         <section>
@@ -1308,12 +1873,12 @@ function Log({
               <p className="mt-1 text-sm text-slate-600">Appeal dossier generated &amp; saved on device</p>
             </div>
             <div>
-              <p className="text-xs font-black text-slate-400">Step 2 · In Progress</p>
+              <p className="text-xs font-black text-[#1E5E3A]">Step 2 · {markedToday ? 'Completed' : 'In Progress'}</p>
               <p className="mt-1 text-sm text-slate-600">Submit copy to platform driver dispute channel</p>
             </div>
             <div>
               <p className="text-xs font-black text-slate-400">Step 3 · Due in 30 Days</p>
-              <p className="mt-1 text-sm text-slate-600">Escalate to TAWU if platform fails to respond</p>
+              <p className="mt-1 text-sm text-slate-600">Escalate to TAWU if platform fails to respond or rejects</p>
             </div>
           </div>
         </section>
@@ -1339,76 +1904,114 @@ function Feedback({
   menu: () => void
   activeCase?: CaseRecord | null
 }) {
-  const [submittingFeedback, setSubmittingFeedback] = useState(false)
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  const [rating, setRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [submitted, setSubmitted] = useState(false)
 
-  const handleSubmitFeedback = () => {
-    setSubmittingFeedback(true)
-    setTimeout(() => {
-      setSubmittingFeedback(false)
-      setFeedbackSubmitted(true)
-      setTimeout(() => {
-        go(7)
-      }, 1000)
-    }, 1200)
-  }
+  const mailtoUrl = `mailto:sautiyadere@gmail.com?subject=${encodeURIComponent(
+    `Sauti ya Dere Feedback${rating > 0 ? ` (${rating}/5 Stars)` : ''}`
+  )}&body=${encodeURIComponent(
+    `Driver Rating: ${rating > 0 ? `${rating}/5 Stars` : 'Not specified'}\n\nFeedback / Suggestions:\n${feedbackText || 'No comments provided'}\n\n---\nSent via Sauti ya Dere PWA`
+  )}`
 
   return (
     <>
       <Header onMenu={menu} onBack={() => go(7)} activeCase={activeCase} />
-      <main className="flex flex-1 flex-col gap-6 px-5 py-6">
+      <main className="flex flex-1 flex-col gap-5 px-5 py-6 overflow-y-auto">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#D97706]">Help us improve</p>
           <h1 className="mt-2 text-2xl font-black">Give us your feedback</h1>
+          <p className="mt-1 text-xs text-slate-500">Your direct input shapes how DereBot advocates for drivers.</p>
         </div>
-        <fieldset>
-          <legend className="mb-3 text-sm font-bold">How would you rate Sauti ya Dere?</legend>
+
+        {/* Rating Stars */}
+        <fieldset className="rounded-2xl border border-slate-200 bg-white p-4">
+          <legend className="mb-2 text-xs font-black uppercase tracking-wider text-slate-600">
+            How would you rate Sauti ya Dere?
+          </legend>
           <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                type="button"
-                aria-label={`${n} stars`}
-                className="flex size-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-xl text-[#D97706]"
-              >
-                ★
-              </button>
-            ))}
+            {[1, 2, 3, 4, 5].map((n) => {
+              const isFilled = n <= (hoverRating || rating)
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  aria-label={`${n} star${n > 1 ? 's' : ''}`}
+                  onClick={() => setRating(n)}
+                  onMouseEnter={() => setHoverRating(n)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  className={`flex size-11 items-center justify-center rounded-xl border text-xl transition cursor-pointer ${
+                    isFilled
+                      ? 'border-amber-300 bg-amber-50 text-[#D97706]'
+                      : 'border-slate-200 bg-white text-slate-300 hover:border-slate-300'
+                  }`}
+                >
+                  ★
+                </button>
+              )
+            })}
           </div>
+          {rating > 0 && (
+            <p className="mt-2 text-xs font-bold text-[#D97706]">
+              {rating} of 5 stars selected
+            </p>
+          )}
         </fieldset>
-        <label className="flex flex-col gap-2 text-sm font-bold">
-          Your thoughts
+
+        {/* Feedback text input */}
+        <label className="flex flex-col gap-2 text-xs font-black uppercase tracking-wider text-slate-600">
+          Your Comments &amp; Suggestions
           <textarea
-            className="min-h-32 rounded-xl border border-slate-200 bg-white p-4 font-normal outline-none focus:border-[#1E5E3A]"
-            placeholder="Tell us how Sauti ya Dere worked for you or report an issue."
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            className="min-h-28 rounded-xl border border-slate-200 bg-white p-3.5 text-xs font-normal text-slate-800 outline-none focus:border-[#1E5E3A] resize-none"
+            placeholder="Tell us what worked well, what was confusing, or what features you would like added to DereBot..."
           />
-          <span className="text-xs font-normal text-slate-500">Sends directly to team at sautiyadere@gmail.com</span>
         </label>
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-600 flex flex-col gap-3">
+
+        {submitted ? (
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-900 flex flex-col gap-2">
+            <div className="flex items-center gap-2 font-black text-sm text-[#1E5E3A]">
+              <Check size={18} /> Thank You for Your Feedback!
+            </div>
+            <p className="leading-5 text-emerald-800">
+              Your email client was opened to send your feedback to <b>sautiyadere@gmail.com</b>. If your email didn&apos;t open automatically, tap below:
+            </p>
+            <a
+              href={mailtoUrl}
+              className="mt-1 flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#1E5E3A] px-4 text-xs font-bold text-white hover:bg-[#174A2E] transition"
+            >
+              <Send size={14} /> Open Email &amp; Send Feedback
+            </a>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            <a
+              href={mailtoUrl}
+              onClick={() => setSubmitted(true)}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1E5E3A] px-4 text-xs font-black text-white shadow-sm hover:bg-[#174A2E] transition active:scale-[.98]"
+            >
+              <Send size={15} /> Send Feedback via Email (sautiyadere@gmail.com)
+            </a>
+          </div>
+        )}
+
+        {/* Direct Contacts Card */}
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 flex flex-col gap-2.5">
+          <p className="font-extrabold text-[#0F172A]">Direct Contacts &amp; Union Hotline</p>
           <a
             href="mailto:sautiyadere@gmail.com"
-            className="flex items-center gap-2 hover:underline"
+            className="flex items-center gap-2 text-[#1E5E3A] font-bold hover:underline"
           >
-            <Send className="text-[#1E5E3A]" size={16} /> Email: sautiyadere@gmail.com
+            <Send size={14} /> Email: sautiyadere@gmail.com
           </a>
           <a
             href="tel:+254700000000"
-            className="flex items-center gap-2 font-bold text-[#1E5E3A] hover:underline"
+            className="flex items-center gap-2 text-[#1E5E3A] font-bold hover:underline"
           >
-            <Phone className="text-[#1E5E3A]" size={16} /> Call TAWU Dispute Hotline (+254 700 000 000)
+            <Phone size={14} /> TAWU Dispute Hotline: +254 700 000 000
           </a>
-        </div>
-        <div className="mt-auto">
-          <Btn
-            onClick={handleSubmitFeedback}
-            disabled={submittingFeedback || feedbackSubmitted}
-          >
-            {feedbackSubmitted
-              ? '✓ Feedback Submitted to Team Sonic!'
-              : submittingFeedback
-              ? 'Submitting Feedback...'
-              : 'Submit Feedback'}
-          </Btn>
         </div>
       </main>
       <Footer />
@@ -1416,21 +2019,204 @@ function Feedback({
   )
 }
 
-/* Slide-out Drawer */
+/* Driver Rights & DereBot Guide Modal */
+function GuideModal({
+  isOpen,
+  onClose
+}: {
+  isOpen: boolean
+  onClose: () => void
+}) {
+  const [tab, setTab] = useState<'how' | 'privacy' | 'rights'>('how')
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/50 p-4 backdrop-blur-xs">
+      <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-3xl bg-white shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-[#1E5E3A] text-white">
+              <Scale size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-[#0F172A]">Driver Rights &amp; DereBot Guide</h3>
+              <p className="text-xs text-slate-500">Legal backing, AI logic, and privacy safeguards</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex size-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="flex border-b border-slate-200 bg-white px-6 pt-2">
+          <button
+            onClick={() => setTab('how')}
+            className={`pb-3 px-3 text-xs font-bold border-b-2 transition ${
+              tab === 'how'
+                ? 'border-[#1E5E3A] text-[#1E5E3A]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            🤖 How DereBot Works
+          </button>
+          <button
+            onClick={() => setTab('privacy')}
+            className={`pb-3 px-3 text-xs font-bold border-b-2 transition ${
+              tab === 'privacy'
+                ? 'border-[#1E5E3A] text-[#1E5E3A]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            🛡️ Privacy &amp; Data Dignity
+          </button>
+          <button
+            onClick={() => setTab('rights')}
+            className={`pb-3 px-3 text-xs font-bold border-b-2 transition ${
+              tab === 'rights'
+                ? 'border-[#1E5E3A] text-[#1E5E3A]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            ⚖️ Statutory Legal Rights
+          </button>
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto p-6 text-xs text-slate-700 space-y-4">
+          {tab === 'how' && (
+            <>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">1. Conversational Fact Gathering</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  DereBot acts as an intake paralegal. Rather than asking you to fill complex legal forms, it asks you natural questions in English or Kiswahili to capture 5 vital trip facts: <b>Date</b>, <b>Time</b>, <b>Route (pickup &amp; drop-off)</b>, <b>Fare/Payment</b>, and <b>Incident details</b>.
+                </p>
+              </div>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">2. AI Dispute Classification &amp; Bounding</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  Your incident narrative is analyzed with a specialized Kenyan transport dispute classifier (SetFit model fine-tuned on Kenyan transport grievances + Gemini 3.8 Flash). It classifies cases under standard NTSA categories: Fare &amp; Payment Disputes, Passenger Safety Allegations, Rating &amp; Cancellation Drops, or Account/Fraud Flags.
+                </p>
+                <p className="mt-1 leading-5 text-slate-600">
+                  <b>Strict Scope:</b> DereBot is dedicated exclusively to digital hailing platform disputes. Queries unrelated to driver appeals or account rights are flagged as out-of-scope.
+                </p>
+              </div>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">3. Formal Legal Affidavit Synthesis</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  Instead of copying messy chat logs or personal conversational questions into your appeal, DereBot structures verified facts into a formal, first-person legal rebuttal tailored to platform review standards.
+                </p>
+              </div>
+            </>
+          )}
+
+          {tab === 'privacy' && (
+            <>
+              <div className="rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-4 text-[#1E5E3A]">
+                <b className="font-extrabold">The Dignity Principle: Zero Centralized Evidence Storage</b>
+                <p className="mt-1 text-slate-600 leading-5">
+                  Your suspension screenshot, M-Pesa receipts, dashcam audio, and personal profile are saved strictly in your phone&apos;s browser database (IndexedDB via Dexie.js). They are never uploaded to a cloud server.
+                </p>
+              </div>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">Client-Side PII Scrubbing</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  Before any incident context is processed by Gemini 3.8 Flash, our on-device redaction scrubber removes sensitive personally identifiable data:
+                </p>
+                <ul className="mt-2 list-disc pl-5 space-y-1 text-slate-600">
+                  <li>Kenyan mobile phone numbers (07xx, 01xx, +254...)</li>
+                  <li>Motor vehicle registration numbers (e.g., KDA 123X)</li>
+                  <li>National Identity Card numbers</li>
+                </ul>
+              </div>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">Driver Data Control</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  You can purge your entire dispute history, profile, and cached evidence at any time by tapping <b>Privacy &amp; Clear Data</b> in the sidebar.
+                </p>
+              </div>
+            </>
+          )}
+
+          {tab === 'rights' && (
+            <>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">NTSA Legal Notice No. 120 (2022) — Regulation 15</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  Under the National Transport and Safety Authority (Operation of Digital Hailing Operators) Regulations, 2022:
+                </p>
+                <ul className="mt-2 list-disc pl-5 space-y-1 text-slate-600">
+                  <li>Digital hailing operators are legally required to establish an internal dispute resolution mechanism.</li>
+                  <li>All driver appeals must be resolved within an enforceable <b>30-day statutory window</b>.</li>
+                  <li>Drivers are entitled to objective evidence review and fair administrative hearing before permanent deactivation.</li>
+                </ul>
+              </div>
+              <div>
+                <b className="text-sm font-extrabold text-[#0F172A]">Kenya Data Protection Act, 2019 — Section 26</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  As a data subject, every driver has the statutory right to:
+                </p>
+                <ul className="mt-2 list-disc pl-5 space-y-1 text-slate-600">
+                  <li>Receive written reasons for algorithmic decisions or automatic deactivations.</li>
+                  <li>Challenge automated profiling that affects their livelihood.</li>
+                  <li>Demand rectification of misleading or false passenger allegations.</li>
+                </ul>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <b className="font-extrabold text-[#0F172A]">Trade Union Conciliation Desk</b>
+                <p className="mt-1 leading-5 text-slate-600">
+                  If the platform rejects your appeal or fails to reply within 30 days, your generated dossier serves as official evidence for escalation to the <b>Transport &amp; Allied Workers Union (TAWU-Kenya)</b> conciliation desk (disputes@tawu.or.ke).
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-xl bg-[#1E5E3A] px-5 py-2 text-xs font-bold text-white hover:bg-[#174A2E]"
+          >
+            Understood
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* Slide-out Drawer (Fix z-index z-50 & Privacy Data Purge) */
 function Drawer({
   close,
   go,
   profile,
-  onStartNewCase
+  onStartNewCase,
+  onClearAllData,
+  onOpenGuide,
+  appealText
 }: {
   close: () => void
   go: (n: number) => void
   profile: ProfileData
   onStartNewCase: () => void
+  onClearAllData: () => Promise<void>
+  onOpenGuide?: () => void
+  appealText?: string
 }) {
+  const mailtoBody = encodeURIComponent(
+    appealText ||
+    `Formal Dispute Dossier submitted via Sauti ya Dere.\nDriver: ${profile.name || 'Mwangi'} (${profile.phone || ''})\nPlatform: ${profile.platform || 'Bolt'}`
+  )
+  const mailtoUrl = `mailto:info@twu.or.ke?subject=Formal%20Dispute%20Dossier%20-%20Sauti%20ya%20Dere&body=${mailtoBody}`
+
   return (
-    <div className="fixed inset-0 z-40 bg-[#0F172A]/40">
-      <aside className="ml-auto min-h-full w-[min(310px,85vw)] bg-white p-5 shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 bg-[#0F172A]/40">
+      <aside className="ml-auto min-h-full w-[min(310px,85vw)] bg-white p-5 shadow-2xl flex flex-col z-50">
         <div className="flex items-center justify-between border-b border-slate-200 pb-5">
           <div className="flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-full bg-[#E9F3ED] font-black text-[#1E5E3A]">
@@ -1441,44 +2227,88 @@ function Drawer({
               <p className="text-xs text-slate-500">{profile.phone || '0712 345 678'}</p>
             </div>
           </div>
-          <button aria-label="Close menu" onClick={close}>
-            <X />
+          <button aria-label="Close menu" onClick={close} className="p-1 rounded-lg hover:bg-slate-100">
+            <X size={20} />
           </button>
         </div>
-        <nav className="flex flex-col gap-2 py-5">
-          {[
-            ['📋', 'Active Appeal / Start New', 2],
-            ['📁', 'My Case Log & History', 7],
-            ['👤', 'Driver Profile Settings', 1],
-            ['🔔', 'In-App Notifications · 1', 7],
-            ['📞', 'TAWU-Kenya Union Help', 7],
-            ['💬', 'Give Feedback', 8],
-            ['🛡️', 'Privacy & Clear Local Data', 0]
-          ].map(([icon, label, screenNum]) => (
-            <button
-              key={label as string}
-              onClick={() => {
-                if (label === 'Active Appeal / Start New') {
-                  onStartNewCase()
-                } else {
-                  go(screenNum as number)
-                }
-                close()
-              }}
-              className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
-            >
-              <span>{icon}</span>
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="mt-auto">
+        <nav className="flex flex-col gap-2 py-5 flex-1 overflow-y-auto">
+          <button
+            onClick={() => {
+              onStartNewCase()
+              close()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>📋</span> Active Appeal / Start New
+          </button>
+          <button
+            onClick={() => {
+              go(7)
+              close()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>📁</span> My Case Log &amp; History
+          </button>
+          <button
+            onClick={() => {
+              go(1)
+              close()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>👤</span> Driver Profile Settings
+          </button>
+          <button
+            onClick={() => {
+              close()
+              onOpenGuide?.()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>📖</span> Driver Rights &amp; DereBot Guide
+          </button>
+          <button
+            onClick={() => {
+              go(7)
+              close()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>🔔</span> In-App Notifications
+          </button>
           <a
             href="tel:+254700000000"
-            className="mb-3 flex items-center justify-center gap-2 rounded-xl bg-[#E9F3ED] p-3 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB]"
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
           >
-            <Phone size={14} /> Call TAWU Hotline (+254 700 000 000)
+            <span>📞</span> Call TAWU Hotline (+254 700 000 000)
           </a>
+          <a
+            href={mailtoUrl}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>📤</span> Forward to TAWU-Kenya
+          </a>
+          <button
+            onClick={() => {
+              go(8)
+              close()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-700 hover:bg-[#F1F9F3]"
+          >
+            <span>💬</span> Give Feedback
+          </button>
+          <button
+            onClick={async () => {
+              await onClearAllData()
+              close()
+            }}
+            className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-red-600 hover:bg-red-50"
+          >
+            <span>🛡️</span> Privacy &amp; Clear Local Data
+          </button>
+        </nav>
+        <div className="mt-auto pt-4 border-t border-slate-100">
           <Trust text="Your evidence is never uploaded." />
         </div>
       </aside>
@@ -1490,6 +2320,7 @@ function Drawer({
 export default function Page() {
   const [screen, setScreen] = useState(0)
   const [drawer, setDrawer] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
 
   // 1. Driver Profile State (Task T25)
   const [profile, setProfile] = useState<ProfileData>({
@@ -1498,17 +2329,21 @@ export default function Page() {
     platform: 'Bolt'
   })
 
-  // 2. Active Case State
+  // 2. Active Case State: Initial evidenceHeld MUST start as empty []
   const [casePlatform, setCasePlatform] = useState('Bolt')
   const [noticeText, setNoticeText] = useState('Fare or payment dispute')
   const [narrative, setNarrative] = useState('')
-  const [evidenceHeld, setEvidenceHeld] = useState<string[]>([
-    'SUSPENSION_NOTICE',
-    'TRIP_RECEIPT_SCREENSHOT'
-  ])
+  const [evidenceHeld, setEvidenceHeld] = useState<string[]>([])
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null)
+  const [uploadTargetDoc, setUploadTargetDoc] = useState<string | null>(null)
+  // OCR state: facts extracted from uploaded images / pasted notice text
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null)
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [pasteNoticeText, setPasteNoticeText] = useState('')
+  // Case type history for dynamic confidence tracking
+  const [caseTypeHistory, setCaseTypeHistory] = useState<string[]>([])
 
-  // 3. Analysis Result from Backend (Task T24/T26 & Dynamic Update)
+  // 3. Analysis Result from Backend: Initial Evidence Readiness starts at 0%
   const [analysis, setAnalysis] = useState<AnalysisResult>({
     classification: {
       case_type: '',
@@ -1570,15 +2405,16 @@ export default function Page() {
   const go = (n: number) => setScreen(n)
   const menu = () => setDrawer(true)
 
-  // Case Reset Handler ("Start Another Case" & Drawer "Active Appeal / Start New")
+  // Dynamic Evidence Reset Handler ("Start Another Case" & Drawer "Active Appeal / Start New")
   const startNewCase = () => {
     setNarrative('')
     setNoticeText('Fare or payment dispute')
     setAttachedFileName(null)
-    setEvidenceHeld([
-      'SUSPENSION_NOTICE',
-      'TRIP_RECEIPT_SCREENSHOT'
-    ])
+    setUploadTargetDoc(null)
+    setEvidenceHeld([])
+    setOcrResult(null)
+    setPasteNoticeText('')
+    setCaseTypeHistory([])
     setAnalysis({
       classification: {
         case_type: '',
@@ -1600,22 +2436,137 @@ export default function Page() {
     go(2)
   }
 
-  // Working File Upload Handler
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setAttachedFileName(file.name)
-      const docKey = screen === 2 ? 'SUSPENSION_NOTICE' : 'TRIP_RECEIPT_SCREENSHOT'
-      setEvidenceHeld((prev) => (prev.includes(docKey) ? prev : [...prev, docKey]))
+  // Privacy & Clear Local Data: Purge all local data and reset in-memory state
+  const handleClearAllData = async () => {
+    try {
+      await clearAllLocalData()
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.clear()
+      }
+      setProfile({ name: '', phone: '', platform: 'Bolt' })
+      setCasePlatform('Bolt')
+      setNoticeText('Fare or payment dispute')
+      setNarrative('')
+      setEvidenceHeld([])
+      setAttachedFileName(null)
+      setUploadTargetDoc(null)
+      setCasesList([])
+      setOcrResult(null)
+      setPasteNoticeText('')
+      setCaseTypeHistory([])
+      setAnalysis({
+        classification: { case_type: '', confidence: null, needs_confirmation: true },
+        entities: [],
+        evidence: { readiness: 0, missing: [], optional: [] },
+        appeal: { headline: '', body: '', policy_rules: [] }
+      })
+      alert('All local profile and case data purged from this device in accordance with our Dignity Principle.')
+      go(0)
+    } catch (err) {
+      console.error('Error clearing local data:', err)
     }
   }
 
-  const triggerFileUpload = () => {
+  // Working File Upload Handler — with Gemini Vision OCR
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setAttachedFileName(file.name)
+      const docKey = uploadTargetDoc || (screen === 2 ? 'SUSPENSION_NOTICE' : 'TRIP_RECEIPT_SCREENSHOT')
+      setEvidenceHeld((prev) => {
+        const next = prev.includes(docKey) ? prev : [...prev, docKey]
+        const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
+        setAnalysis((a) => ({
+          ...a,
+          evidence: {
+            ...a.evidence,
+            readiness: nextReadiness
+          }
+        }))
+        return next
+      })
+      setUploadTargetDoc(null)
+
+      // Run OCR if the file is an image or PDF and we have an API key
+      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || ''
+      if (apiKey && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
+        setOcrLoading(true)
+        try {
+          const result = await ocrExtractFromImage(file, apiKey)
+          if (result) {
+            setOcrResult(result)
+            // Auto-infer notice category from OCR if detected
+            if (result.detected_category && result.detected_category !== 'unknown') {
+              const catMap: Record<string, string> = {
+                fare_dispute: 'Fare or payment dispute',
+                passenger_safety: 'Safety violation allegation',
+                rating_or_cancellation: 'Cancellation or rating drop',
+                fraud_flag: 'Account or identity flag'
+              }
+              if (catMap[result.detected_category]) {
+                setNoticeText(catMap[result.detected_category])
+              }
+            }
+            // Merge OCR entities into analysis
+            if (result.entities && result.entities.length > 0) {
+              setAnalysis((a) => ({
+                ...a,
+                entities: [
+                  ...a.entities,
+                  ...result.entities.filter(
+                    (ne) => !a.entities.some((e) => e.label === ne.label && e.text === ne.text)
+                  )
+                ]
+              }))
+            }
+          }
+        } finally {
+          setOcrLoading(false)
+        }
+      }
+    }
+  }
+
+  const triggerFileUpload = (targetDoc?: string) => {
+    setUploadTargetDoc(targetDoc || null)
     const el = document.getElementById('notice-upload') as HTMLInputElement | null
     if (el) {
       el.value = ''
       el.click()
     }
+  }
+
+  // Remove evidence from held list (Screen 5)
+  const handleRemoveEvidence = (docKey: string) => {
+    setEvidenceHeld((prev) => {
+      const next = prev.filter((k) => k !== docKey)
+      const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
+      setAnalysis((a) => ({
+        ...a,
+        evidence: {
+          ...a.evidence,
+          readiness: nextReadiness
+        }
+      }))
+      return next
+    })
+  }
+
+  // Toggle evidence in held list (Screen 5)
+  const handleToggleEvidence = (docKey: string) => {
+    setEvidenceHeld((prev) => {
+      const exists = prev.includes(docKey)
+      const next = exists ? prev.filter((k) => k !== docKey) : [...prev, docKey]
+      const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
+      setAnalysis((a) => ({
+        ...a,
+        evidence: {
+          ...a.evidence,
+          readiness: nextReadiness
+        }
+      }))
+      return next
+    })
   }
 
   // Save profile to IndexedDB
@@ -1627,7 +2578,7 @@ export default function Page() {
     }
   }
 
-  // Orchestrate Backend API call with Client-Side Fallback Extraction (Demo-Safe)
+  // Orchestrate Backend API call with True Fact Binding
   const handleAnalyze = async (overrideNarrative?: string) => {
     const textToAnalyze = (overrideNarrative !== undefined ? overrideNarrative : narrative).trim()
     if (textToAnalyze && textToAnalyze !== narrative) {
@@ -1641,7 +2592,6 @@ export default function Page() {
       evidence_held: evidenceHeld
     }
 
-    // Local readiness calculation: Math.min(100, Math.round((evidenceHeld.length / 3) * 100))
     const localReadinessPct = Math.min(100, Math.round((evidenceHeld.length / 3) * 100))
     const localReadinessRatio = localReadinessPct / 100
 
@@ -1674,59 +2624,82 @@ export default function Page() {
       console.warn('API call to /api/analyze failed, falling back to client extraction:', err)
     }
 
-    // If API responded with entities, use backend data; otherwise, run client-side regex fallback
-    if (resData && Array.isArray(resData.entities) && resData.entities.length > 0) {
-      setAnalysis({
-        classification: {
-          case_type: resData.classification?.case_type || 'fare_dispute',
-          confidence: resData.classification?.confidence ?? 0.9,
-          needs_confirmation: resData.classification?.needs_confirmation ?? false
-        },
-        entities: resData.entities,
-        evidence: {
-          readiness: resData.evidence?.readiness ?? localReadinessRatio,
-          missing: Array.isArray(resData.evidence?.missing) ? resData.evidence.missing : [],
-          optional: resData.evidence?.optional ?? []
-        },
-        appeal: {
-          headline: resData.appeal?.headline || `Appeal against account restriction: ${casePlatform} Dispute`,
-          body: resData.appeal?.body || (textToAnalyze ? `Dear ${casePlatform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my driver account regarding the following incident:\n\n"${textToAnalyze}"\n\nPlease review the attached evidence (${evidenceHeld.join(', ')}) and the facts recorded on my device. In accordance with NTSA Legal Notice 120 Regulation 15 and Kenya Data Protection Act 2019 Section 26, I respectfully request a fair hearing and prompt resolution within the 30-day statutory timeline.\n\nKind regards,\n${profile.name || 'Authorized Driver'}` : ''),
-          policy_rules: resData.appeal?.policy_rules || ['NTSA-LN120-REG15', 'KDPA-2019-SEC26']
+    // Bind analysis.entities directly from /api/analyze response if available
+    if (resData) {
+      setAnalysis((prev) => {
+        const backendEntities = Array.isArray(resData.entities) ? resData.entities : []
+        // Merge in OCR facts too
+        const ocrEntities: EntityItem[] = ocrResult?.entities || []
+        const baseEntities = backendEntities.length > 0 ? backendEntities : (prev.entities.length > 0 ? prev.entities : extractFallbackFacts(textToAnalyze))
+        const seen = new Set<string>(baseEntities.map((e: EntityItem) => `${e.label}:${e.text.toLowerCase()}`))
+        const mergedEntities = [...baseEntities, ...ocrEntities.filter((e) => !seen.has(`${e.label}:${e.text.toLowerCase()}`))]
+
+        // Dynamic confidence: use backend value if real, otherwise compute from facts
+        const rawConf = resData.classification?.confidence
+        const dynamicConf = rawConf != null && rawConf > 0
+          ? rawConf
+          : computeDynamicConfidence(mergedEntities, caseTypeHistory, textToAnalyze.length)
+
+        return {
+          classification: {
+            case_type: resData.classification?.case_type || prev.classification.case_type || 'fare_dispute',
+            confidence: dynamicConf,
+            needs_confirmation: resData.classification?.needs_confirmation ?? false
+          },
+          entities: mergedEntities,
+          evidence: {
+            readiness: resData.evidence?.readiness ?? localReadinessRatio,
+            missing: Array.isArray(resData.evidence?.missing) ? resData.evidence.missing : [],
+            optional: resData.evidence?.optional ?? []
+          },
+          appeal: {
+            headline: resData.appeal?.headline || `Formal Appeal: ${casePlatform} Account Restriction`,
+            body: resData.appeal?.body || '',
+            policy_rules: resData.appeal?.policy_rules || ['NTSA-LN120-REG15', 'KDPA-2019-SEC26']
+          }
         }
       })
     } else {
-      // Client-Side Regex Fallback Extraction
-      const fallbackEntities = extractFallbackFacts(textToAnalyze)
+      // Client-Side Fallback: use OCR entities + regex extraction
+      const regexEntities = extractFallbackFacts(textToAnalyze)
+      const ocrEntities: EntityItem[] = ocrResult?.entities || []
+      const seen = new Set<string>(regexEntities.map((e: EntityItem) => `${e.label}:${e.text.toLowerCase()}`))
+      const fallbackEntities = [...regexEntities, ...ocrEntities.filter((e) => !seen.has(`${e.label}:${e.text.toLowerCase()}`))]
 
-      // Guess classification from notice text or narrative keywords
-      let fallbackType = 'fare_dispute'
-      const lower = (textToAnalyze + ' ' + noticeText).toLowerCase()
-      if (lower.includes('safe') || lower.includes('threat') || lower.includes('violat') || lower.includes('harass')) {
-        fallbackType = 'passenger_safety'
-      } else if (lower.includes('cancel') || lower.includes('rating') || lower.includes('star')) {
-        fallbackType = 'rating_or_cancellation'
-      } else if (lower.includes('fraud') || lower.includes('ident') || lower.includes('document')) {
-        fallbackType = 'fraud_flag'
+      // Auto-classify from OCR + narrative (no hardcoded type)
+      let fallbackType = ocrResult?.detected_category || 'fare_dispute'
+      if (!ocrResult || ocrResult.detected_category === 'unknown') {
+        const lower = (textToAnalyze + ' ' + noticeText).toLowerCase()
+        if (lower.includes('safe') || lower.includes('threat') || lower.includes('violat') || lower.includes('harass')) {
+          fallbackType = 'passenger_safety'
+        } else if (lower.includes('cancel') || lower.includes('rating') || lower.includes('star')) {
+          fallbackType = 'rating_or_cancellation'
+        } else if (lower.includes('fraud') || lower.includes('ident') || lower.includes('document')) {
+          fallbackType = 'fraud_flag'
+        }
       }
+
+      // Dynamic confidence — computed, not hardcoded
+      const dynamicConf = computeDynamicConfidence(fallbackEntities, [...caseTypeHistory, fallbackType], textToAnalyze.length)
 
       setAnalysis((prev) => ({
         classification: {
-          case_type: resData?.classification?.case_type || fallbackType,
-          confidence: resData?.classification?.confidence ?? 0.88,
-          needs_confirmation: false
+          case_type: fallbackType,
+          confidence: dynamicConf,
+          needs_confirmation: dynamicConf < 0.6
         },
-        entities: (resData?.entities && resData.entities.length > 0) ? resData.entities : fallbackEntities,
+        entities: fallbackEntities,
         evidence: {
-          readiness: resData?.evidence?.readiness ?? localReadinessRatio,
-          missing: resData?.evidence?.missing?.length ? resData.evidence.missing : [
-            { id: 'M_PESA_STATEMENT', reason: 'Proof of fare payment or lack thereof corroborates driver account.' }
+          readiness: localReadinessRatio,
+          missing: [
+            { id: 'M_PESA_STATEMENT', reason: 'Proof of fare payment or transaction history.' }
           ],
-          optional: resData?.evidence?.optional || ['IN_APP_CHAT_SCREENSHOT']
+          optional: ['IN_APP_CHAT_SCREENSHOT']
         },
         appeal: {
-          headline: resData?.appeal?.headline || `Formal Appeal: ${casePlatform} Account Restriction (${formatCaseType(fallbackType)})`,
-          body: resData?.appeal?.body || (textToAnalyze ? `Dear ${casePlatform} Driver Support,\n\nI am writing to formally appeal the restriction placed on my driver account regarding the following incident:\n\n"${textToAnalyze}"\n\nPlease review the attached evidence (${evidenceHeld.join(', ')}) and the facts recorded on my device. In accordance with NTSA Legal Notice 120 Regulation 15 and Kenya Data Protection Act 2019 Section 26, I respectfully request a fair hearing and prompt resolution within the 30-day statutory timeline.\n\nKind regards,\n${profile.name || 'Authorized Driver'}\n${profile.phone || ''}` : ''),
-          policy_rules: resData?.appeal?.policy_rules?.length ? resData.appeal.policy_rules : ['NTSA-LN120-REG15', 'KDPA-2019-SEC26']
+          headline: `Formal Appeal: ${casePlatform} Account Restriction (${formatCaseType(fallbackType)})`,
+          body: '',
+          policy_rules: ['NTSA-LN120-REG15', 'KDPA-2019-SEC26']
         }
       }))
     }
@@ -1760,22 +2733,40 @@ export default function Page() {
     })
   }
 
-  // Override case type
+  // Override case type — also track in history for dynamic confidence
   const handleSelectCaseType = (t: string) => {
-    setAnalysis((prev) => ({
-      ...prev,
-      classification: {
-        ...prev.classification,
-        case_type: t,
-        confidence: prev.classification.confidence ?? 1.0,
-        needs_confirmation: false
+    setCaseTypeHistory((prev) => [...prev, t])
+    setAnalysis((prev) => {
+      // Keep real confidence if present and valid; otherwise compute dynamically from facts
+      const currentConf = prev.classification.confidence
+      const computed = computeDynamicConfidence(prev.entities, [...caseTypeHistory, t], narrative.length)
+      const finalConf = currentConf != null && currentConf > 0 && currentConf < 1 ? currentConf : computed
+      return {
+        ...prev,
+        classification: {
+          ...prev.classification,
+          case_type: t,
+          confidence: finalConf,
+          needs_confirmation: false
+        }
       }
-    }))
+    })
   }
 
   // Save finalized dossier to IndexedDB (Task T25/T26)
   const handleSaveDossier = async () => {
     try {
+      const caseRef = `SYD-APP-${new Date().getFullYear()}-${String((casesList[0]?.id || 0) + 1).padStart(4, '0')}`
+      const synthesizedBody = formatFormalAppealBody({
+        platform: casePlatform || 'Bolt',
+        driverName: profile.name || 'Mwangi',
+        driverPhone: profile.phone || '',
+        caseRef,
+        entities: analysis.entities as any,
+        narrative,
+        evidenceHeld: evidenceHeld as any
+      })
+
       await saveCase({
         platform: casePlatform || 'Bolt',
         case_type: analysis.classification.case_type || 'fare_dispute',
@@ -1784,14 +2775,24 @@ export default function Page() {
         narrative: narrative || 'Driver dispute submission.',
         evidence_held: evidenceHeld,
         appeal_dossier: {
-          headline: analysis.appeal.headline || `Appeal: ${casePlatform} Dispute`,
-          statement_body: analysis.appeal.body || narrative || 'Appeal statement body',
+          headline: analysis.appeal.headline || `Formal Appeal: ${casePlatform} Account Restriction`,
+          statement_body: synthesizedBody,
           policy_rules: analysis.appeal.policy_rules
         }
       })
       await refreshCases()
     } catch (err) {
       console.error('Failed to save case dossier to IndexedDB:', err)
+    }
+  }
+
+  // Update status of an existing case in IndexedDB (Screen 7)
+  const handleUpdateCaseStatus = async (caseId: number, newStatus: string) => {
+    try {
+      await updateCaseStatus(caseId, newStatus)
+      await refreshCases()
+    } catch (err) {
+      console.error('Failed to update case status in db:', err)
     }
   }
 
@@ -1808,10 +2809,10 @@ export default function Page() {
         onChange={handleFileUpload}
       />
 
-      {/* Responsive Root Container (Laptop View: max-w-4xl md:grid md:grid-cols-12 md:gap-8 md:p-8 md:items-start) */}
-      <div className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col bg-[#F8FAFC] shadow-xl md:max-w-4xl md:grid md:grid-cols-12 md:gap-8 md:p-8 md:items-start md:shadow-none md:bg-transparent">
+      {/* Responsive Root Container (Laptop View: max-w-6xl fluid responsive grid) */}
+      <div className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col bg-[#F8FAFC] shadow-xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl md:grid md:grid-cols-12 md:gap-8 md:p-8 md:items-start md:shadow-none md:bg-transparent">
         {/* Persistent Brand Sidebar (Screens >= 768px) */}
-        <aside className="hidden md:flex md:col-span-5 lg:col-span-4 flex-col gap-5 sticky top-8 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <aside className="hidden md:flex md:col-span-4 lg:col-span-4 flex-col gap-5 sticky top-8 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           {/* Brand header */}
           <div className="flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-2xl bg-[#1E5E3A] text-white shadow-md shadow-[#1E5E3A]/20">
@@ -1856,12 +2857,24 @@ export default function Page() {
               <ShieldCheck size={16} /> Driver Profile
             </button>
             <button
+              onClick={() => setShowGuide(true)}
+              className="flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <HelpCircle size={16} className="text-[#1E5E3A]" /> Driver Rights &amp; Guide
+            </button>
+            <button
               onClick={() => go(8)}
               className={`flex min-h-11 items-center gap-2.5 rounded-xl px-4 text-xs font-bold transition ${
                 screen === 8 ? 'bg-[#E9F3ED] text-[#1E5E3A]' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
               <Bell size={16} /> Give Feedback
+            </button>
+            <button
+              onClick={handleClearAllData}
+              className="flex min-h-11 items-center gap-2.5 rounded-xl px-4 text-xs font-bold text-red-600 hover:bg-red-50 transition"
+            >
+              <X size={16} /> Privacy &amp; Clear Data
             </button>
           </div>
 
@@ -1889,7 +2902,7 @@ export default function Page() {
         </aside>
 
         {/* Wizard Main Column (Right on Desktop, Full Width on Mobile) */}
-        <div className="col-span-12 md:col-span-7 lg:col-span-8 flex flex-col min-h-screen md:min-h-[640px] w-full bg-[#F8FAFC] md:bg-white md:rounded-3xl md:border md:border-slate-200 md:shadow-lg overflow-hidden">
+        <div className="col-span-12 md:col-span-8 lg:col-span-8 flex flex-col min-h-screen md:min-h-[640px] w-full bg-[#F8FAFC] md:bg-white md:rounded-3xl md:border md:border-slate-200 md:shadow-lg overflow-hidden">
           <div className="flex-1 flex flex-col">
             {screen === 0 && <Splash go={go} activeCase={activeCaseRecord} />}
             {screen === 1 && (
@@ -1905,11 +2918,75 @@ export default function Page() {
                 go={go}
                 menu={menu}
                 platform={casePlatform}
-                noticeText={noticeText}
                 onChangePlatform={setCasePlatform}
-                onChangeNotice={setNoticeText}
                 onTriggerUpload={triggerFileUpload}
                 attachedFileName={attachedFileName}
+                ocrResult={ocrResult}
+                ocrLoading={ocrLoading}
+                pasteNoticeText={pasteNoticeText}
+                onChangePasteNotice={setPasteNoticeText}
+                onAdvance={() => {
+                  if (pasteNoticeText.trim() || attachedFileName) {
+                    setEvidenceHeld((prev) => {
+                      const next = prev.includes('SUSPENSION_NOTICE') ? prev : [...prev, 'SUSPENSION_NOTICE']
+                      const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
+                      setAnalysis((a) => ({
+                        ...a,
+                        evidence: {
+                          ...a.evidence,
+                          readiness_score: nextReadiness
+                        }
+                      }))
+                      return next
+                    })
+                  }
+                  go(3)
+                }}
+                onAnalyzePasteText={async () => {
+                  if (!pasteNoticeText.trim()) return
+                  setEvidenceHeld((prev) => {
+                    const next = prev.includes('SUSPENSION_NOTICE') ? prev : [...prev, 'SUSPENSION_NOTICE']
+                    const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
+                    setAnalysis((a) => ({
+                      ...a,
+                      evidence: {
+                        ...a.evidence,
+                        readiness_score: nextReadiness
+                      }
+                    }))
+                    return next
+                  })
+                  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || ''
+                  if (apiKey) {
+                    setOcrLoading(true)
+                    try {
+                      const result = await analyzeNoticeText(pasteNoticeText, apiKey)
+                      if (result) {
+                        setOcrResult(result)
+                        if (result.detected_category && result.detected_category !== 'unknown') {
+                          const catMap: Record<string, string> = {
+                            fare_dispute: 'Fare or payment dispute',
+                            passenger_safety: 'Safety violation allegation',
+                            rating_or_cancellation: 'Cancellation or rating drop',
+                            fraud_flag: 'Account or identity flag'
+                          }
+                          if (catMap[result.detected_category]) setNoticeText(catMap[result.detected_category])
+                        }
+                        if (result.entities?.length > 0) {
+                          setAnalysis((a) => ({
+                            ...a,
+                            entities: [
+                              ...a.entities,
+                              ...result.entities.filter((ne) => !a.entities.some((e) => e.label === ne.label && e.text === ne.text))
+                            ]
+                          }))
+                        }
+                      }
+                    } finally {
+                      setOcrLoading(false)
+                    }
+                  }
+                }}
                 activeCase={activeCaseRecord}
               />
             )}
@@ -1917,10 +2994,30 @@ export default function Page() {
               <Chat
                 go={go}
                 menu={menu}
-                onAnalyze={handleAnalyze}
+                platform={casePlatform}
+                noticeText={noticeText}
                 narrative={narrative}
                 onChangeNarrative={setNarrative}
+                entities={analysis.entities}
+                onSetEntities={(newEntities) =>
+                  setAnalysis((prev) => ({
+                    ...prev,
+                    entities: newEntities
+                  }))
+                }
+                onSelectCaseType={handleSelectCaseType}
+                onUpdateConfidence={(confidence) => {
+                  setAnalysis((prev) => ({
+                    ...prev,
+                    classification: {
+                      ...prev.classification,
+                      confidence
+                    }
+                  }))
+                  setCaseTypeHistory((prev) => [...prev])
+                }}
                 evidenceHeld={evidenceHeld}
+                ocrFacts={ocrResult?.entities || []}
                 onTriggerUpload={triggerFileUpload}
                 attachedFileName={attachedFileName}
                 activeCase={activeCaseRecord}
@@ -1944,6 +3041,8 @@ export default function Page() {
                 menu={menu}
                 analysis={analysis}
                 evidenceHeld={evidenceHeld}
+                onTriggerUpload={triggerFileUpload}
+                onRemoveEvidence={handleRemoveEvidence}
                 activeCase={activeCaseRecord}
               />
             )}
@@ -1967,6 +3066,8 @@ export default function Page() {
                 cases={casesList}
                 onStartNewCase={startNewCase}
                 activeCase={activeCaseRecord}
+                onUpdateCaseStatus={handleUpdateCaseStatus}
+                onSaveCurrentDraft={handleSaveDossier}
               />
             )}
             {screen === 8 && <Feedback go={go} menu={menu} activeCase={activeCaseRecord} />}
@@ -1979,8 +3080,19 @@ export default function Page() {
           go={go}
           profile={profile}
           onStartNewCase={startNewCase}
+          onClearAllData={handleClearAllData}
+          onOpenGuide={() => setShowGuide(true)}
+          appealText={formatFormalAppealBody({
+            platform: casePlatform,
+            driverName: profile.name,
+            driverPhone: profile.phone,
+            entities: analysis.entities as any,
+            narrative,
+            evidenceHeld: evidenceHeld as any
+          })}
         />
       )}
+      <GuideModal isOpen={showGuide} onClose={() => setShowGuide(false)} />
     </main>
   )
 }

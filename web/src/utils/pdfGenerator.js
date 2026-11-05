@@ -89,12 +89,109 @@ function extractTripFacts(caseData) {
  * Cleanly format evidence item identifiers into human-readable titles.
  */
 function formatEvidenceName(key) {
-  if (!key) return 'Corroborating Document'
+  if (!key) return 'Supporting Document'
+  if (typeof key === 'object' && key !== null) {
+    return key.name || key.label || key.id || 'Supporting Document'
+  }
   return String(key)
-    .replace(/_SCREENSHOT|_STATEMENT|_NOTICE|_LOG|_EXPORT/gi, '')
+    .replace(/_SCREENSHOT|_STATEMENT|_NOTICE|_LOG|_EXPORT|_RECEIPT/gi, '')
     .replace(/_/g, ' ')
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+/**
+ * Context-Aware Appeal Synthesis (Screen 6 & PDF).
+ *
+ * Requirements:
+ * - Do NOT wrap raw narrative in quotes.
+ * - Addressee: Formal Platform Driver Support & Appeals Division
+ * - Grounds: Citing NTSA Legal Notice 120 Regulation 15 and Kenya Data Protection Act 2019 Section 26.
+ * - Incident Breakdown: Formal statement constructed from the driver's narrative and extracted entities.
+ * - Reinstatement Demand: Formal request for account review within the mandatory 30-day statutory window.
+ *
+ * @param {Object} [params]
+ * @param {string} [params.platform]
+ * @param {string} [params.driverName]
+ * @param {string} [params.driverPhone]
+ * @param {string} [params.caseRef]
+ * @param {Array<any>} [params.entities]
+ * @param {string} [params.narrative]
+ * @param {Array<string>} [params.evidenceHeld]
+ * @param {string} [params.synthesizedStatement]
+ * @returns {string}
+ */
+export function formatFormalAppealBody({
+  platform = 'Bolt',
+  driverName = 'Mwangi',
+  driverPhone = '',
+  caseRef = 'SYD-APP-2026-0001',
+  entities = [],
+  narrative = '',
+  evidenceHeld = [],
+  synthesizedStatement = ''
+} = {}) {
+  const findEntity = (labels) => {
+    const list = Array.isArray(entities) ? entities : []
+    const match = list.find((e) => labels.includes(e.label?.toUpperCase()))
+    return match ? match.text : null
+  }
+
+  const incidentDate = findEntity(['DATE', 'EVENT_DATE', 'TRIP_DATE']) || 'As recorded in trip logs'
+  const operatingHours = findEntity(['TIME', 'EVENT_TIME', 'TRIP_TIME']) || 'Operating hours on record'
+  const route = findEntity(['ROUTE', 'LOCATION', 'PICKUP', 'DROPOFF', 'ORIGIN', 'DESTINATION']) || 'Designated trip route'
+  const fare = findEntity(['FARE', 'AMOUNT', 'DISPUTE_AMOUNT', 'PRICE']) || null
+  const allegation = findEntity(['ALLEGATION', 'DISPUTE_TYPE']) || null
+
+  const evidenceList = Array.isArray(evidenceHeld) && evidenceHeld.length > 0
+    ? evidenceHeld.map((k) => formatEvidenceName(k)).join(', ')
+    : 'Trip receipt, deactivation notice, and mobile payment confirmation'
+
+  // Build clean legal rebuttal statement: use synthesizedStatement if present, otherwise structured legal paragraph
+  let cleanRebuttal = ''
+  if (synthesizedStatement && synthesizedStatement.trim()) {
+    cleanRebuttal = synthesizedStatement.trim()
+  } else {
+    // Structured legal synthesis from confirmed facts — never dumping raw chat
+    const allegationClause = allegation ? ` regarding ${allegation.toLowerCase()}` : ''
+    const fareClause = fare ? ` involving a disputed amount of ${fare}` : ''
+    cleanRebuttal = `On ${incidentDate}, between approximately ${operatingHours}, while performing passenger transport on ${platform} along the ${route} route, an operational dispute arose${allegationClause}${fareClause}. The account restriction was imposed without adequate opportunity for response or objective examination of trip logs and corroborating on-device evidence. In accordance with Regulation 15 of NTSA Legal Notice 120 and Section 26 of the Kenya Data Protection Act, 2019, I respectfully demand an administrative review and expedited reinstatement of my driver account.`
+  }
+
+  const factsLines = [
+    `• Incident Date: ${incidentDate}`,
+    `• Operating Hours: ${operatingHours}`,
+    `• Disputed Route: ${route}`,
+    fare ? `• Disputed Fare / Amount: ${fare}` : null,
+    allegation ? `• Stated Allegation: ${allegation}` : null,
+    `• Platform Case / Ticket Ref: #${caseRef}`,
+    `• Supporting Evidence Attached: ${evidenceList}`
+  ].filter(Boolean).join('\n')
+
+  return [
+    `TO: Formal ${platform} Driver Support & Appeals Division`,
+    `FROM: ${driverName}${driverPhone ? ` (${driverPhone})` : ''}`,
+    `DATE: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`,
+    `CASE REF: #${caseRef}`,
+    ``,
+    `RE: FORMAL ADMINISTRATIVE APPEAL & STATUTORY REINSTATEMENT DEMAND`,
+    ``,
+    `1. STATUTORY NOTICE & LEGAL GROUNDS`,
+    `This appeal is formally lodged pursuant to Regulation 15 of the National Transport and Safety Authority (Operation of Digital Hailing Operators) Regulations, 2022 (Legal Notice No. 120) and Section 26 of the Kenya Data Protection Act, 2019. The driver asserts statutory entitlement to fair administrative action, objective evidence evaluation, and correction of unjustified account deactivations.`,
+    ``,
+    `2. VERIFIED INCIDENT BREAKDOWN & CASE FACTS`,
+    factsLines,
+    ``,
+    `3. DRIVER REBUTTAL & STATEMENT OF OPERATIONAL TRUTH`,
+    cleanRebuttal,
+    ``,
+    `4. FORMAL REINSTATEMENT DEMAND & STATUTORY TIMELINE`,
+    `In accordance with Regulation 15 of NTSA Legal Notice 120, the platform is under statutory obligation to resolve this dispute within the mandatory 30-day statutory window. We hereby formally demand immediate administrative review of the attached supporting evidence and expedited reinstatement of driver account access.`,
+    ``,
+    `Respectfully submitted,`,
+    `${driverName}`,
+    `In partnership with Transport & Allied Workers Union (TAWU-Kenya)`
+  ].join('\n')
 }
 
 /**
@@ -104,7 +201,7 @@ function formatEvidenceName(key) {
  * @param {Object} [params.driverProfile] - Driver name, phone, platform
  * @param {Object} [params.caseData] - Case details (id, platform, narrative, entities, evidence_held)
  * @param {Object} [params.appealDossier] - Appeal headline, body, policy_rules
- * @returns {Promise<{ pdfBytes: Uint8Array, blob?: Blob, filename: string }>}
+ * @returns {Promise<{ pdfBytes: Uint8Array, blob?: Blob, filename: string, pageCount: number }>}
  */
 export async function generateAppealPdf({
   driverProfile = {},
@@ -256,22 +353,22 @@ export async function generateAppealPdf({
     color: colors.darkSlate
   })
 
-  page.drawText('HAILING OPERATOR / PLATFORM', {
+  page.drawText('PLATFORM OPERATOR', {
     x: col2X,
     y: idBoxY + 22,
     size: 6.5,
     font: fontBold,
     color: colors.mutedGrey
   })
-  page.drawText(driverPlatform.toUpperCase(), {
+  page.drawText(`${driverPlatform} Kenya`, {
     x: col2X,
     y: idBoxY + 10,
     size: 9,
     font: fontBold,
-    color: colors.darkSlate
+    color: colors.forestGreen
   })
 
-  page.drawText('REGISTERED CONTACT / MSISDN', {
+  page.drawText('REGISTERED PHONE', {
     x: col3X,
     y: idBoxY + 22,
     size: 6.5,
@@ -281,7 +378,7 @@ export async function generateAppealPdf({
   page.drawText(driverPhone, {
     x: col3X,
     y: idBoxY + 10,
-    size: 9,
+    size: 8.5,
     font: fontBold,
     color: colors.darkSlate
   })
@@ -291,7 +388,7 @@ export async function generateAppealPdf({
   // ==========================================
   // SECTION 2: STATUTORY REFERENCE
   // ==========================================
-  page.drawText('2. STATUTORY FRAMEWORK & MANDATORY PROCEDURAL RIGHTS', {
+  page.drawText('2. STATUTORY FRAMEWORK & DUE PROCESS CITATIONS', {
     x: MARGIN,
     y: cursorY,
     size: 8.5,
@@ -400,7 +497,7 @@ export async function generateAppealPdf({
   // ==========================================
   // SECTION 4: FORMAL STATEMENT BODY
   // ==========================================
-  page.drawText('4. FORMAL STATEMENT OF APPEAL & GROUNDS', {
+  page.drawText('4. FORMAL STATEMENT OF REBUTTAL & REINSTATEMENT DEMAND', {
     x: MARGIN,
     y: cursorY,
     size: 8.5,
@@ -411,25 +508,41 @@ export async function generateAppealPdf({
 
   const headlineText =
     appealDossier.headline?.trim() ||
-    `Appeal Against Unjust Platform Action: ${driverPlatform} Incident`
+    `Administrative Appeal Rebuttal: ${driverPlatform} Dispute`
 
-  const bodyContent =
-    appealDossier.statement_body?.trim() ||
-    appealDossier.body?.trim() ||
-    caseData.narrative?.trim() ||
-    'I hereby lodge this formal appeal requesting immediate review of the punitive flag placed upon my driver account. The operational facts recorded on-device substantiate that services were rendered in full adherence to platform terms and safety standards.'
+  // Extract Section 3 rebuttal and Section 4 demand from formal appeal body
+  let driverRebuttalText = ''
+  let demandText = 'In accordance with Regulation 15 of NTSA Legal Notice 120, we formally demand immediate administrative review of the attached corroborating evidence and expedited reinstatement of driver account access within the mandatory 30-day statutory window.'
 
-  // Wrap statement body to fit inside card
-  const statementLines = wrapText(bodyContent, CONTENT_WIDTH - 24, fontRegular, 8.2)
-
-  // Cap lines to prevent overflow beyond single page
-  const maxAllowedLines = 9
-  const renderedLines = statementLines.slice(0, maxAllowedLines)
-  if (statementLines.length > maxAllowedLines) {
-    renderedLines[maxAllowedLines - 1] = renderedLines[maxAllowedLines - 1] + '... [Continued in digital dossier record]'
+  if (appealDossier.statement_body && appealDossier.statement_body.includes('3. DRIVER REBUTTAL')) {
+    const parts = appealDossier.statement_body.split(/3\.\s*DRIVER REBUTTAL[^\n]*\n+/)
+    if (parts[1]) {
+      const subParts = parts[1].split(/\n+4\.\s*FORMAL REINSTATEMENT DEMAND[^\n]*\n+/)
+      driverRebuttalText = subParts[0].trim()
+      if (subParts[1]) {
+        const demandParts = subParts[1].split(/\n+Respectfully submitted/i)
+        if (demandParts[0]?.trim()) demandText = demandParts[0].trim()
+      }
+    }
   }
 
-  const statementBoxHeight = 26 + renderedLines.length * 11 + 6
+  if (!driverRebuttalText) {
+    const rawNarrative = (caseData.narrative || '').trim()
+    driverRebuttalText = rawNarrative && !rawNarrative.startsWith('TO:')
+      ? rawNarrative.replace(/^["']|["']$/g, '').trim()
+      : `On ${facts.date}, between approximately ${facts.time}, while performing passenger transport on ${driverPlatform} along the ${facts.location} route, an operational dispute arose. The account restriction was imposed without adequate opportunity for response or objective examination of trip logs and corroborating evidence. I respectfully demand an administrative review and expedited reinstatement under Regulation 15 of NTSA Legal Notice 120.`
+  }
+
+  // Clean out any leftover markdown or asterisks
+  driverRebuttalText = driverRebuttalText.replace(/^(?:Sentence Formulation:?\*?\*?|Sentence \d+:?\s*)/gim, '').replace(/\*\*/g, '').trim()
+
+  const pdfStatementBody = `${driverRebuttalText}\n\n${demandText}`
+
+  // Wrap statement body to fit inside card cleanly
+  const statementLines = wrapText(pdfStatementBody, CONTENT_WIDTH - 24, fontRegular, 7.2)
+  const renderedLines = statementLines.slice(0, 16)
+
+  const statementBoxHeight = 20 + renderedLines.length * 9.2 + 6
   const statementBoxY = cursorY - statementBoxHeight
 
   page.drawRectangle({
@@ -445,23 +558,23 @@ export async function generateAppealPdf({
   // Headline
   page.drawText(headlineText, {
     x: MARGIN + 12,
-    y: statementBoxY + statementBoxHeight - 16,
+    y: statementBoxY + statementBoxHeight - 15,
     size: 8.5,
     font: fontBold,
     color: colors.darkSlate
   })
 
   // Body lines
-  let textY = statementBoxY + statementBoxHeight - 28
+  let textY = statementBoxY + statementBoxHeight - 27
   for (const line of renderedLines) {
     page.drawText(line, {
       x: MARGIN + 12,
       y: textY,
-      size: 8,
+      size: 7.5,
       font: fontRegular,
       color: colors.darkSlate
     })
-    textY -= 11
+    textY -= 10
   }
 
   cursorY = statementBoxY - 12
@@ -469,7 +582,7 @@ export async function generateAppealPdf({
   // ==========================================
   // SECTION 5: CORROBORATED EVIDENCE CHECKLIST
   // ==========================================
-  page.drawText('5. CORROBORATED EVIDENCE CHECKLIST (ATTACHED ON-DEVICE PROOF)', {
+  page.drawText('5. SUPPORTING EVIDENCE CHECKLIST (ATTACHED ON-DEVICE PROOF)', {
     x: MARGIN,
     y: cursorY,
     size: 8.5,
