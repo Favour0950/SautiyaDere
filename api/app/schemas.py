@@ -91,3 +91,57 @@ class SmsReminderResponse(BaseModel):
     message: str
     error: str | None = None
     response: dict | None = None
+
+
+class SendOtpRequest(BaseModel):
+    phone_number: str = Field(min_length=9, max_length=20)
+
+
+class SendOtpResponse(BaseModel):
+    status: str
+    message: str
+    recipient: str
+    expires_in_seconds: int = 300
+
+
+class VerifyOtpRequest(BaseModel):
+    phone_number: str = Field(min_length=9, max_length=20)
+    otp: str = Field(min_length=4, max_length=6)
+
+
+class VerifyOtpResponse(BaseModel):
+    status: str
+    verified: bool
+    message: str
+
+
+class FeedbackRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comments: str | None = Field(default=None, max_length=2000)
+    phone: str | None = Field(default=None, max_length=30)
+    platform: str | None = Field(default=None, max_length=50)
+
+
+class FeedbackResponse(BaseModel):
+    status: str = "success"
+    feedback_id: int
+
+
+class TelemetryPing(BaseModel):
+    timestamp: str | None = None
+    platform: str | None = None
+    predicted_case_type: str | None = None
+    model_confidence: float | None = None
+    inversion_override: bool = False
+    overridden_case_type: str | None = None
+    entities_detected_count: int = 0
+    readiness_score: int | None = None
+
+
+class TelemetryResponse(BaseModel):
+    status: str = "success"
+    event_id: int
+
+
+class AdminAuthRequest(BaseModel):
+    passkey: str

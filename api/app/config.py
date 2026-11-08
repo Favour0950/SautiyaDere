@@ -2,6 +2,9 @@
 
 import os
 from dataclasses import dataclass, field
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _split(value: str) -> list[str]:
@@ -20,8 +23,15 @@ class Settings:
     anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY") or None
 
     # Africa's Talking SMS Credentials
-    africastalking_username: str = os.getenv("AFRICASTALKING_USERNAME", "sandbox")
-    africastalking_api_key: str | None = os.getenv("AFRICASTALKING_API_KEY") or None
+    africastalking_username: str = os.getenv("AFRICASTALKING_USERNAME", "buildathon-voice")
+    africastalking_api_key: str | None = os.getenv(
+        "AFRICASTALKING_API_KEY",
+        "atsk_cc2a04e75e8d2f7c5626e8c98681252513425f3284069e6cf7c00378aa152c4b16631d38",
+    )
+    africastalking_shortcode: str = os.getenv("AFRICASTALKING_SHORTCODE", "20384")
+
+    # Admin Dashboard Passkey
+    admin_passkey: str = os.getenv("ADMIN_PASSKEY", "dere2026")
 
 
 settings = Settings()

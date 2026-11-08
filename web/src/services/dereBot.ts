@@ -422,7 +422,10 @@ export async function sendDereBotMessage({
         contents,
         generationConfig: {
           temperature: 0.2,
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
         }
       })
     })
@@ -536,7 +539,10 @@ Rules:
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 2048
+          maxOutputTokens: 2048,
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
         }
       })
     })

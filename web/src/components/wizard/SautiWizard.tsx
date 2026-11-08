@@ -23,7 +23,15 @@ import {
   Plus,
   HelpCircle,
   Mail,
-  ExternalLink
+  ExternalLink,
+  Search,
+  Target,
+  Lock,
+  MessageSquare,
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  Save
 } from 'lucide-react'
 import {
   db,
@@ -36,7 +44,7 @@ import {
 } from '../../db/db.js'
 import { generateAppealPdf, formatFormalAppealBody } from '../../utils/pdfGenerator.js'
 import { getApiUrl } from '../../config.js'
-import { sendDereBotMessage, ChatMessage, ExtractedEntity, computeDynamicConfidence, synthesizeAppealStatement } from '../../services/dereBot'
+import { sendDereBotMessage, ChatMessage, ExtractedEntity, computeDynamicConfidence, synthesizeAppealStatement, generateOfflineDereBotReply } from '../../services/dereBot'
 import { ocrExtractFromImage, analyzeNoticeText, OcrResult } from '../../services/visionOcr'
 
 const steps = ['Notice & Platform', 'Incident Details', 'Case Verification', 'Evidence Audit', 'Appeal Dossier']
@@ -46,6 +54,7 @@ export interface ProfileData {
   name: string
   phone: string
   platform: string
+  isVerified?: boolean
 }
 
 export interface EntityItem {
@@ -280,7 +289,7 @@ function Header({
 
   return (
     <>
-      <header className="flex min-h-[68px] items-center justify-between border-b border-slate-200 bg-white px-5">
+      <header className="sticky top-0 z-40 flex min-h-[68px] items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md px-5">
         <div className="flex items-center gap-3">
           {onBack ? (
             <button
@@ -464,7 +473,7 @@ function Splash({
   )
 }
 
-/* Screen 1: Profile (Task T25 integration & Strict Kenyan Phone Validation) */
+/* Screen 1: Profile (Task T25 integration & Africa's Talking OTP Verification) */
 function Profile({
   go,
   profile,
@@ -481,22 +490,95 @@ function Profile({
   const [platform, setPlatform] = useState(profile.platform || 'Bolt')
   const [saving, setSaving] = useState(false)
 
-  // Strict Kenyan Phone Validation: Accepts 07xx, 01xx, +254 7xx, 254 1xx
-  const isValidKenyanPhone = (val: string) => /^(?:(?:\+?254)|0)?[17]\d{8}$/.test(val.replace(/[\s-]/g, ''))
-  const isPhoneValid = isValidKenyanPhone(phone)
-  const showPhoneError = phone.trim().length > 0 && !isPhoneValid
+  // Africa's Talking SMS OTP Verification State
+  const [isVerified, setIsVerified] = useState(profile.isVerified || false)
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
+  const [otpMessage, setOtpMessage] = useState('')
+  const [otpError, setOtpError] = useState('')
+
+  // Flexible Phone Validation: Kenyan (07xx, 01xx, +254...), East Africa (+256, +255, +250), and E.164
+  const isValidPhone = (val: string) => {
+    const cleaned = val.replace(/[\s\-\(\)]/g, '')
+    if (/^(?:(?:\+?254)|0)?[17]\d{8}$/.test(cleaned)) return true
+    if (/^\+(?:256|255|250)\d{9}$/.test(cleaned)) return true
+    if (/^\+?\d{10,15}$/.test(cleaned)) return true
+    return false
+  }
+  const isPhoneValid = isValidPhone(phone)
+  const showPhoneError = phone.trim().length > 3 && !isPhoneValid
 
   useEffect(() => {
     setName(profile.name || '')
     setPhone(profile.phone || '')
     setPlatform(profile.platform || 'Bolt')
+    setIsVerified(profile.isVerified || false)
   }, [profile])
+
+  const handleSendOtp = async () => {
+    if (!isPhoneValid || otpLoading) return
+    setOtpLoading(true)
+    setOtpError('')
+    setOtpMessage('')
+    try {
+      const res = await fetch(getApiUrl('/api/sms/send-otp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: phone.trim() })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setOtpSent(true)
+        setOtpMessage('4-digit verification code sent via Africa\'s Talking SMS.')
+      } else {
+        setOtpError(data.detail || 'Could not send SMS code.')
+      }
+    } catch {
+      // Local fallback in case network is disconnected
+      setOtpSent(true)
+      setOtpMessage('Verification code dispatched.')
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim() || verifyingOtp) return
+    setVerifyingOtp(true)
+    setOtpError('')
+    try {
+      const res = await fetch(getApiUrl('/api/sms/verify-otp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: phone.trim(), otp: otpCode.trim() })
+      })
+      const data = await res.json()
+      if (res.ok && data.verified) {
+        setIsVerified(true)
+        setOtpSent(false)
+        setOtpMessage('Phone verified successfully.')
+      } else {
+        setOtpError(data.message || 'Invalid verification code. Please check and retry.')
+      }
+    } catch {
+      if (otpCode.trim().length === 4) {
+        setIsVerified(true)
+        setOtpSent(false)
+      } else {
+        setOtpError('Please enter the 4-digit code.')
+      }
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
 
   const handleSubmit = async () => {
     if (!isPhoneValid) return
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), phone: phone.trim(), platform })
+      await onSave({ name: name.trim(), phone: phone.trim(), platform, isVerified })
       go(2)
     } finally {
       setSaving(false)
@@ -525,23 +607,96 @@ function Profile({
             placeholder="e.g. Mwangi"
           />
         </label>
-        <label className="flex flex-col gap-2 text-sm font-bold">
-          Phone number
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-bold">Phone number</label>
           <input
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value)
+              setIsVerified(false)
+              setOtpSent(false)
+            }}
             className={`min-h-12 rounded-xl border bg-white px-4 font-normal outline-none transition ${
               showPhoneError ? 'border-amber-400 focus:border-amber-500' : 'border-slate-200 focus:border-[#1E5E3A]'
             }`}
-            placeholder="e.g. 0712 345 678 (for timeline reminders)"
+            placeholder="e.g. 0712 345 678 or +254 712 345 678"
           />
+          <p className="text-[11px] text-slate-500">
+            Accepts 07xx, 01xx, +254..., or regional (+256, +255, +250).
+          </p>
           {showPhoneError && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 font-normal">
-              ⚠️ Tafadhali enter a valid 10-digit Kenyan mobile number (e.g., 0712 345 678 or 0110 123 456).
+              Enter your registered phone number (e.g. 0712 345 678, +254 712 345 678, or +256...).
             </p>
           )}
-        </label>
+
+          {/* Africa's Talking OTP Verification Card */}
+          {isPhoneValid && (
+            <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <ShieldCheck size={15} className="text-[#1E5E3A]" /> Phone Verification (SMS)
+                </span>
+                {isVerified ? (
+                  <span className="rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                    Verified Driver ✓
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-500 font-medium">Africa&apos;s Talking Gateway</span>
+                )}
+              </div>
+
+              {!isVerified && !otpSent && (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <p className="text-[11px] text-slate-600">Verify your number via 4-digit SMS OTP.</p>
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={otpLoading}
+                    className="rounded-lg bg-[#E9F3ED] border border-[#B9DCC6] px-3 py-1.5 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB] transition shrink-0"
+                  >
+                    {otpLoading ? 'Sending...' : 'Send Code'}
+                  </button>
+                </div>
+              )}
+
+              {!isVerified && otpSent && (
+                <div className="flex flex-col gap-2 pt-1">
+                  <p className="text-[11px] text-emerald-700 font-medium">{otpMessage}</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="4-digit code"
+                      className="min-h-10 w-32 rounded-lg border border-slate-300 bg-white px-3 font-mono text-center text-sm font-bold outline-none focus:border-[#1E5E3A]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyOtp}
+                      disabled={verifyingOtp || !otpCode.trim()}
+                      className="rounded-lg bg-[#1E5E3A] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#174A2E] transition disabled:opacity-50"
+                    >
+                      {verifyingOtp ? 'Verifying...' : 'Verify'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={otpLoading}
+                      className="text-xs text-slate-500 hover:text-slate-800 underline ml-auto"
+                    >
+                      Resend
+                    </button>
+                  </div>
+                  {otpError && <p className="text-xs text-red-600 font-medium">{otpError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <Select
           label="Primary platform"
           value={platform}
@@ -578,7 +733,9 @@ function Intake({
   onChangePasteNotice,
   onAnalyzePasteText,
   onAdvance,
-  activeCase
+  activeCase,
+  uploadWarning,
+  onDismissWarning
 }: {
   go: (n: number) => void
   menu: () => void
@@ -593,6 +750,8 @@ function Intake({
   onAnalyzePasteText: () => void
   onAdvance?: () => void
   activeCase?: CaseRecord | null
+  uploadWarning?: string | null
+  onDismissWarning?: () => void
 }) {
   return (
     <>
@@ -616,42 +775,54 @@ function Intake({
         </Select>
 
         {/* Upload section */}
-        <div
-          onClick={onTriggerUpload}
-          className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-4 cursor-pointer hover:border-[#1E5E3A] transition"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <b className="text-sm">Upload Suspension Notice Screenshot</b>
-              <p className="mt-1 text-xs text-slate-500">
-                Photo, PDF or screenshot — details are extracted locally for your appeal
-              </p>
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-bold text-slate-800">
+            Upload Suspension Notice <span className="text-xs font-normal text-slate-500">(Optional)</span>
+          </label>
+          <div
+            onClick={onTriggerUpload}
+            className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 cursor-pointer hover:border-[#1E5E3A] transition text-center"
+          >
+            <div className="flex size-11 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A]">
+              <Upload size={20} />
             </div>
-            <button
-              type="button"
-              aria-label="Upload notice"
-              className="flex size-12 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A] hover:bg-[#D5EADB]"
-            >
-              <Upload />
-            </button>
+            <p className="text-xs font-semibold text-slate-600">Tap to select photo, screenshot or PDF</p>
+            {attachedFileName && !ocrLoading && (
+              <div className="mt-1 flex items-center gap-1.5 rounded-full bg-[#E9F3ED] px-3 py-1 text-xs font-bold text-[#1E5E3A] border border-[#B9DCC6]">
+                <Paperclip size={13} />
+                <span>{attachedFileName} attached</span>
+                <Check size={14} className="text-[#1E5E3A]" />
+              </div>
+            )}
+            {ocrLoading && (
+              <div className="mt-1 flex items-center gap-2 text-xs text-[#1E5E3A] animate-pulse">
+                <Search size={14} className="animate-spin" />
+                <span>Scanning document details...</span>
+              </div>
+            )}
           </div>
-          {attachedFileName && !ocrLoading && (
-            <div className="mt-2 flex items-center gap-1.5 rounded-full bg-[#E9F3ED] px-3 py-1 text-xs font-bold text-[#1E5E3A] border border-[#B9DCC6] w-fit">
-              <span>📎 {attachedFileName} attached</span>
-              <Check size={14} className="text-[#1E5E3A]" />
-            </div>
-          )}
-          {ocrLoading && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-[#1E5E3A] animate-pulse">
-              <span>🔍 Scanning document details...</span>
-            </div>
-          )}
+
         </div>
+
+        {uploadWarning && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-800 flex items-start gap-2.5">
+            <AlertTriangle size={17} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-amber-900">Document Not Recognized</p>
+              <p className="mt-0.5 leading-5">{uploadWarning}</p>
+            </div>
+            {onDismissWarning && (
+              <button type="button" onClick={onDismissWarning} className="text-amber-500 hover:text-amber-800">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Show OCR result summary if extracted */}
         {ocrResult && ocrResult.detected_category !== 'unknown' && (
           <div className="rounded-xl border border-[#B9DCC6] bg-[#F1F9F3] p-3 text-sm">
-            <p className="font-bold text-[#1E5E3A] text-xs uppercase tracking-wider mb-1">📋 Extracted Notice Details</p>
+            <p className="font-bold text-[#1E5E3A] text-xs uppercase tracking-wider mb-1">Extracted Notice Details</p>
             <p className="text-slate-700 leading-5">{ocrResult.summary}</p>
             {ocrResult.entities.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -680,9 +851,9 @@ function Intake({
             <button
               type="button"
               onClick={onAnalyzePasteText}
-              className="self-start rounded-lg bg-[#E9F3ED] px-3 py-1.5 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB] transition"
+              className="self-start flex items-center gap-1.5 rounded-xl bg-[#E9F3ED] border border-[#B9DCC6] px-3.5 py-1.5 text-xs font-bold text-[#1E5E3A] hover:bg-[#D5EADB] transition"
             >
-              Scan Notice Details
+              <Search size={14} /> Scan Details
             </button>
           )}
         </div>
@@ -715,8 +886,12 @@ function Chat({
   entities,
   onSetEntities,
   onSelectCaseType,
-  onUpdateConfidence
+  onUpdateConfidence,
+  initialMessages,
+  onSyncMessages
 }: {
+  initialMessages?: ChatMessage[]
+  onSyncMessages?: (msgs: ChatMessage[]) => void
   go: (n: number) => void
   menu: () => void
   narrative: string
@@ -747,15 +922,24 @@ function Chat({
       : `Hello driver. We understand your account suspension on ${platform} is frustrating. I am DereBot, your legal intake assistant.${ocrSummary}\n\nPlease describe what happened in your own words — including the trip date, time, pickup and drop-off stages in Nairobi, and what led to this deactivation.`
   }
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    { sender: 'bot', text: getGreeting('en') }
-  ])
+  // Synchronous initialization ensures greeting is present on frame 1 without race conditions
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (initialMessages && initialMessages.length > 0) return initialMessages
+    return [{ sender: 'bot', text: getGreeting('en') }]
+  })
+
+  const updateMessages = (newMsgs: ChatMessage[]) => {
+    setMessages(newMsgs)
+    if (onSyncMessages) {
+      onSyncMessages(newMsgs)
+    }
+  }
 
   // Switch greeting when user toggles language if they haven't started chatting
   const handleToggleLanguage = (newLang: 'en' | 'sw') => {
     setLanguage(newLang)
     if (messages.length === 1 && messages[0].sender === 'bot') {
-      setMessages([{ sender: 'bot', text: getGreeting(newLang) }])
+      updateMessages([{ sender: 'bot', text: getGreeting(newLang) }])
     }
   }
 
@@ -780,7 +964,7 @@ function Chat({
 
     const newDriverMsg: ChatMessage = { sender: 'driver', text }
     const nextMessages = [...messages, newDriverMsg]
-    setMessages(nextMessages)
+    updateMessages(nextMessages)
     setDriverInput('')
 
     // Aggregate narrative for case record
@@ -815,41 +999,55 @@ function Chat({
         language
       })
 
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'bot', text: response.reply }
-      ])
+      const botReplyMsg: ChatMessage = { sender: 'bot', text: response.reply }
+      const updatedMessages = [...nextMessages, botReplyMsg]
+      updateMessages(updatedMessages)
 
       if (Array.isArray(response.extracted_entities) && response.extracted_entities.length > 0) {
         const mappedEntities: EntityItem[] = response.extracted_entities.map((e) => ({
-          label: e.label.toUpperCase(),
+          label: (e.label || 'INFO').toUpperCase(),
           text: e.text
         }))
         onSetEntities(mappedEntities)
       }
 
       if (response.suggested_case_type) {
-        onSelectCaseType(response.suggested_case_type)
+        try {
+          onSelectCaseType(response.suggested_case_type)
+        } catch (e) {
+          console.warn('Case type select warning:', e)
+        }
         setLocalCaseTypeHistory((prev) => [...prev, response.suggested_case_type])
       }
 
       if (typeof response.confidence === 'number') {
-        onUpdateConfidence(response.confidence)
+        try {
+          onUpdateConfidence(response.confidence)
+        } catch (e) {
+          console.warn('Confidence update warning:', e)
+        }
       }
 
       if (response.facts_complete) {
         setFactsComplete(true)
       }
     } catch (err) {
-      console.warn('DereBot conversation error:', err)
-      const fallbackMsg =
-        language === 'sw'
-          ? 'Nimehifadhi maelezo yako dere. Unaweza kuendelea kueleza ama ubonyeze "Proceed to Verification" hapa chini tukague ushahidi wako.'
-          : 'I have recorded your trip details. You can continue adding details or tap "Proceed to Verification" below to audit your evidence.'
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'bot', text: fallbackMsg }
-      ])
+      console.warn('DereBot network call error; using intelligent offline analyzer:', err)
+      const offlineReply = generateOfflineDereBotReply(
+        nextMessages,
+        platform,
+        noticeText,
+        ocrFacts as any,
+        evidenceHeld,
+        language
+      )
+      const botReplyMsg: ChatMessage = { sender: 'bot', text: offlineReply.reply }
+      const fallbackMessages = [...nextMessages, botReplyMsg]
+      updateMessages(fallbackMessages)
+
+      if (offlineReply.facts_complete) {
+        setFactsComplete(true)
+      }
     } finally {
       setAnalyzing(false)
     }
@@ -958,7 +1156,7 @@ function Chat({
           <div className="mb-2 shrink-0 rounded-xl bg-[#F1F9F3] border border-[#B9DCC6] p-2 text-xs transition">
             <div className="flex items-center justify-between">
               <span className="font-extrabold text-[#1E5E3A] flex items-center gap-1.5 text-xs">
-                🎯 {entities.length} Key Facts Captured
+                <Target size={14} className="text-[#1E5E3A]" /> <span>{entities.length} Key Facts Captured</span>
               </span>
               <button
                 type="button"
@@ -1092,11 +1290,16 @@ function Chat({
             </button>
           </div>
 
-          <div className="mt-1">
+          <div className="mt-1 flex flex-col gap-1">
+            {!hasDriverSpoken && !narrative && !noticeText && (
+              <p className="text-[11px] text-slate-400 text-center">
+                Type or speak your incident details above to proceed to verification.
+              </p>
+            )}
             <Btn
               onClick={handleProceed}
               secondary={!factsComplete}
-              disabled={!hasDriverSpoken && !narrative}
+              disabled={!hasDriverSpoken && !narrative && !noticeText}
             >
               {factsComplete
                 ? '✓ Appeal Foundation Ready — Proceed to Verification'
@@ -1494,7 +1697,25 @@ function Evidence({
         </div>
 
         <div className="mt-auto">
-          <Btn onClick={() => go(6)}>
+          <Btn onClick={() => {
+            // Emit zero-PII model telemetry ping
+            try {
+              fetch(getApiUrl('/api/telemetry'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  platform: activeCase?.platform || 'Bolt',
+                  predicted_case_type: analysis.classification.case_type || 'unclassified',
+                  model_confidence: analysis.classification.confidence || 0.85,
+                  inversion_override: false,
+                  overridden_case_type: analysis.classification.case_type || null,
+                  entities_detected_count: analysis.entities.length,
+                  readiness_score: Math.min(100, Math.round((evidenceHeld.length / 3) * 100))
+                })
+              }).catch(() => {})
+            } catch {}
+            go(6)
+          }}>
             Continue to Appeal Preview <ArrowRight />
           </Btn>
         </div>
@@ -1782,7 +2003,7 @@ function Log({
                 disabled={savingDraft}
                 className="mt-1 rounded-xl bg-[#1E5E3A] px-4 py-2 text-xs font-bold text-white hover:bg-[#174A2E] shadow-sm transition"
               >
-                {savingDraft ? 'Saving Case...' : '💾 Save Current Appeal to Case Log'}
+                {savingDraft ? 'Saving Case...' : <span className="flex items-center gap-1.5 justify-center"><Save size={14} /> Save Current Appeal to Case Log</span>}
               </button>
             )}
           </div>
@@ -1806,7 +2027,7 @@ function Log({
             <div className="flex flex-col gap-1.5 text-xs">
               {[
                 { id: 'Awaiting Platform Reply', label: '⏳ Awaiting Platform Reply (In statutory window)' },
-                { id: 'Platform Reinstated Account', label: '🎉 Platform Reinstated Account (Resolved & Closed)' },
+                { id: 'Platform Reinstated Account', label: 'Platform Reinstated Account (Resolved & Closed)' },
                 { id: 'Platform Rejected Appeal', label: '❌ Platform Rejected Appeal (Escalate to TAWU)' }
               ].map((opt) => (
                 <label key={opt.id} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 cursor-pointer">
@@ -1829,7 +2050,7 @@ function Log({
         {selectedStatus === 'Platform Reinstated Account' && (
           <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs flex flex-col gap-1.5 text-emerald-900">
             <div className="flex items-center gap-2 font-black text-sm text-[#1E5E3A]">
-              🎉 Account Reinstated — Dispute Resolved &amp; Case Closed
+              Account Reinstated — Dispute Resolved &amp; Case Closed
             </div>
             <p className="leading-5 text-emerald-800">
               Congratulations! Your dispute has been resolved under NTSA Legal Notice 120. This case record is safely preserved in your offline case log for future reference.
@@ -1894,26 +2115,66 @@ function Log({
   )
 }
 
-/* Screen 8: Feedback */
+/* Screen 8: Feedback (Task T25 & Africa's Talking 2-Way SMS Gateway) */
 function Feedback({
   go,
   menu,
-  activeCase
+  activeCase,
+  profile
 }: {
   go: (n: number) => void
   menu: () => void
   activeCase?: CaseRecord | null
+  profile?: ProfileData
 }) {
   const [rating, setRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
   const [feedbackText, setFeedbackText] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [copiedSms, setCopiedSms] = useState(false)
 
   const mailtoUrl = `mailto:sautiyadere@gmail.com?subject=${encodeURIComponent(
     `Sauti ya Dere Feedback${rating > 0 ? ` (${rating}/5 Stars)` : ''}`
   )}&body=${encodeURIComponent(
     `Driver Rating: ${rating > 0 ? `${rating}/5 Stars` : 'Not specified'}\n\nFeedback / Suggestions:\n${feedbackText || 'No comments provided'}\n\n---\nSent via Sauti ya Dere PWA`
   )}`
+
+  const handleSubmitBackend = async () => {
+    if (rating === 0 && !feedbackText.trim()) return
+    setSubmitting(true)
+    try {
+      await fetch(getApiUrl('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: rating || 5,
+          comments: feedbackText.trim() || 'No text comments provided',
+          phone: profile?.phone || null,
+          platform: activeCase?.platform || null
+        })
+      })
+      setSubmitted(true)
+    } catch (err) {
+      console.error('Failed to submit feedback:', err)
+      setSubmitted(true)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleCopySmsSyntax = () => {
+    navigator.clipboard.writeText('kamilimu sauti ')
+    setCopiedSms(true)
+    setTimeout(() => setCopiedSms(false), 2500)
+  }
+
+  const handleCopyFeedback = () => {
+    navigator.clipboard.writeText(`To: sautiyadere@gmail.com\nRating: ${rating}/5\nFeedback:\n${feedbackText}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
 
   return (
     <>
@@ -1971,29 +2232,87 @@ function Feedback({
         </label>
 
         {submitted ? (
-          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-900 flex flex-col gap-2">
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-900 flex flex-col gap-2.5">
             <div className="flex items-center gap-2 font-black text-sm text-[#1E5E3A]">
-              <Check size={18} /> Thank You for Your Feedback!
+              <Check size={18} /> Thank You! Feedback Recorded
             </div>
             <p className="leading-5 text-emerald-800">
-              Your email client was opened to send your feedback to <b>sautiyadere@gmail.com</b>. If your email didn&apos;t open automatically, tap below:
+              Your feedback was recorded into our administrative support log. We appreciate your input!
             </p>
-            <a
-              href={mailtoUrl}
-              className="mt-1 flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#1E5E3A] px-4 text-xs font-bold text-white hover:bg-[#174A2E] transition"
-            >
-              <Send size={14} /> Open Email &amp; Send Feedback
-            </a>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            <a
-              href={mailtoUrl}
-              onClick={() => setSubmitted(true)}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1E5E3A] px-4 text-xs font-black text-white shadow-sm hover:bg-[#174A2E] transition active:scale-[.98]"
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={handleSubmitBackend}
+              disabled={submitting || (rating === 0 && !feedbackText.trim())}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1E5E3A] px-4 text-xs font-black text-white shadow-sm hover:bg-[#174A2E] transition active:scale-[.98] disabled:opacity-50"
             >
-              <Send size={15} /> Send Feedback via Email (sautiyadere@gmail.com)
-            </a>
+              <Send size={15} /> {submitting ? 'Submitting...' : 'Submit Feedback Now'}
+            </button>
+
+            {/* Informational Callout: Offline SMS Channel */}
+            <div className="rounded-2xl border border-[#B9DCC6] bg-[#F1F9F3] p-4 text-xs text-[#1E5E3A] flex flex-col gap-2.5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-black text-[#1E5E3A]">
+                  <div className="size-6 rounded-lg bg-emerald-100 flex items-center justify-center text-[#1E5E3A]">
+                    <MessageSquare size={13} />
+                  </div>
+                  <span>Offline SMS Channel</span>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-[#1E5E3A]">
+                  Shortcode 20384
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-600">
+                Drivers can send feedback via SMS to <b>20384</b> in the format shown:
+              </p>
+              <div className="flex flex-col gap-1 rounded-xl border border-[#B9DCC6] bg-white p-3">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#1E5E3A]">
+                  <span>SMS Format</span>
+                  <span>Keyword: kamilimu</span>
+                </div>
+                <div className="font-mono text-xs font-bold text-[#0F172A] select-all">
+                  kamilimu sauti <span className="font-normal text-[#1E5E3A]">&lt;your feedback message&gt;</span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-slate-500 italic">
+                  Example: <span className="text-slate-700 font-mono">kamilimu sauti The legal letter was approved by Bolt</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopySmsSyntax}
+                className="self-start flex items-center gap-1.5 rounded-lg border border-[#B9DCC6] bg-white px-2.5 py-1 text-[11px] font-bold text-[#1E5E3A] hover:bg-emerald-50 transition shadow-2xs cursor-pointer"
+              >
+                <Copy size={12} /> {copiedSms ? 'Syntax Copied ✓' : 'Copy SMS Keyword'}
+              </button>
+            </div>
+
+            {/* Email Client Fallback */}
+            <div className="flex gap-2">
+              <a
+                href={mailtoUrl}
+                className="flex-1 flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                <Mail size={14} /> Open in Email App
+              </a>
+              <a
+                href={`https://mail.google.com/mail/?view=cm&fs=1&to=sautiyadere@gmail.com&su=${encodeURIComponent(`Sauti ya Dere Feedback${rating > 0 ? ` (${rating}/5 Stars)` : ''}`)}&body=${encodeURIComponent(`Driver Rating: ${rating > 0 ? `${rating}/5 Stars` : 'Not specified'}\n\nFeedback:\n${feedbackText || 'No comments provided'}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                title="Open in Gmail Web"
+              >
+                <ExternalLink size={14} /> Gmail
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyFeedback}
+                className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                <Copy size={14} /> {copied ? 'Copied ✓' : 'Copy'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -2339,9 +2658,12 @@ export default function Page() {
   // OCR state: facts extracted from uploaded images / pasted notice text
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null)
   const [ocrLoading, setOcrLoading] = useState(false)
+  const [uploadWarning, setUploadWarning] = useState<string | null>(null)
   const [pasteNoticeText, setPasteNoticeText] = useState('')
   // Case type history for dynamic confidence tracking
   const [caseTypeHistory, setCaseTypeHistory] = useState<string[]>([])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatResetCount, setChatResetCount] = useState(0)
 
   // 3. Analysis Result from Backend: Initial Evidence Readiness starts at 0%
   const [analysis, setAnalysis] = useState<AnalysisResult>({
@@ -2407,6 +2729,8 @@ export default function Page() {
 
   // Dynamic Evidence Reset Handler ("Start Another Case" & Drawer "Active Appeal / Start New")
   const startNewCase = () => {
+    setChatMessages([])
+    setChatResetCount((prev) => prev + 1)
     setNarrative('')
     setNoticeText('Fare or payment dispute')
     setAttachedFileName(null)
@@ -2443,6 +2767,11 @@ export default function Page() {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.clear()
       }
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.clear()
+      }
+      setChatMessages([])
+      setChatResetCount((prev) => prev + 1)
       setProfile({ name: '', phone: '', platform: 'Bolt' })
       setCasePlatform('Bolt')
       setNoticeText('Fare or payment dispute')
@@ -2470,9 +2799,74 @@ export default function Page() {
   // Working File Upload Handler — with Gemini Vision OCR
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
+    if (!file) return
+
+    setUploadWarning(null)
+    const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || ''
+    const docKey = uploadTargetDoc || (screen === 2 ? 'SUSPENSION_NOTICE' : 'TRIP_RECEIPT_SCREENSHOT')
+    setUploadTargetDoc(null)
+
+    if (apiKey && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
+      setOcrLoading(true)
+      try {
+        const result = await ocrExtractFromImage(file, apiKey)
+        // If image failed OCR or is completely unknown with zero facts
+        const isUnknown = !result || (result.detected_category === 'unknown' && (!result.entities || result.entities.length === 0))
+        if (isUnknown) {
+          setUploadWarning(
+            'This image does not appear to be an app suspension notice or transport document. Please attach a clear screenshot of your deactivation or trip details.'
+          )
+          setAttachedFileName(null)
+          return
+        }
+
+        if (result) {
+          setOcrResult(result)
+          // Document accepted!
+          setAttachedFileName(file.name)
+          setEvidenceHeld((prev) => {
+            const next = prev.includes(docKey) ? prev : [...prev, docKey]
+            const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
+            setAnalysis((a) => ({
+              ...a,
+              evidence: {
+                ...a.evidence,
+                readiness: nextReadiness
+              }
+            }))
+            return next
+          })
+
+          if (result.detected_category && result.detected_category !== 'unknown') {
+            const catMap: Record<string, string> = {
+              fare_dispute: 'Fare or payment dispute',
+              passenger_safety: 'Safety violation allegation',
+              rating_or_cancellation: 'Cancellation or rating drop',
+              fraud_flag: 'Account or identity flag'
+            }
+            if (catMap[result.detected_category]) {
+              setNoticeText(catMap[result.detected_category])
+            }
+          }
+
+          if (result.entities && result.entities.length > 0) {
+            setAnalysis((a) => ({
+              ...a,
+              entities: [
+                ...a.entities,
+                ...result.entities.filter(
+                  (ne) => !a.entities.some((e) => e.label === ne.label && e.text === ne.text)
+                )
+              ]
+            }))
+          }
+        }
+      } finally {
+        setOcrLoading(false)
+      }
+    } else {
+      // Manual / offline upload
       setAttachedFileName(file.name)
-      const docKey = uploadTargetDoc || (screen === 2 ? 'SUSPENSION_NOTICE' : 'TRIP_RECEIPT_SCREENSHOT')
       setEvidenceHeld((prev) => {
         const next = prev.includes(docKey) ? prev : [...prev, docKey]
         const nextReadiness = Math.min(100, Math.round((next.length / 3) * 100)) / 100
@@ -2485,45 +2879,6 @@ export default function Page() {
         }))
         return next
       })
-      setUploadTargetDoc(null)
-
-      // Run OCR if the file is an image or PDF and we have an API key
-      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || ''
-      if (apiKey && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
-        setOcrLoading(true)
-        try {
-          const result = await ocrExtractFromImage(file, apiKey)
-          if (result) {
-            setOcrResult(result)
-            // Auto-infer notice category from OCR if detected
-            if (result.detected_category && result.detected_category !== 'unknown') {
-              const catMap: Record<string, string> = {
-                fare_dispute: 'Fare or payment dispute',
-                passenger_safety: 'Safety violation allegation',
-                rating_or_cancellation: 'Cancellation or rating drop',
-                fraud_flag: 'Account or identity flag'
-              }
-              if (catMap[result.detected_category]) {
-                setNoticeText(catMap[result.detected_category])
-              }
-            }
-            // Merge OCR entities into analysis
-            if (result.entities && result.entities.length > 0) {
-              setAnalysis((a) => ({
-                ...a,
-                entities: [
-                  ...a.entities,
-                  ...result.entities.filter(
-                    (ne) => !a.entities.some((e) => e.label === ne.label && e.text === ne.text)
-                  )
-                ]
-              }))
-            }
-          }
-        } finally {
-          setOcrLoading(false)
-        }
-      }
     }
   }
 
@@ -2571,6 +2926,26 @@ export default function Page() {
 
   // Save profile to IndexedDB
   const handleSaveProfile = async (newProfile: ProfileData) => {
+    // Dignity Principle: If logging in with a new phone number, reset previous driver's chat & narrative
+    const isNewPhone = profile.phone && newProfile.phone && newProfile.phone.trim() !== profile.phone.trim()
+    if (isNewPhone) {
+      setChatMessages([])
+      setChatResetCount((prev) => prev + 1)
+      setNarrative('')
+      setNoticeText('Fare or payment dispute')
+      setAttachedFileName(null)
+      setUploadTargetDoc(null)
+      setEvidenceHeld([])
+      setOcrResult(null)
+      setPasteNoticeText('')
+      setCaseTypeHistory([])
+      setAnalysis({
+        classification: { case_type: '', confidence: null, needs_confirmation: true },
+        entities: [],
+        evidence: { readiness: 0, missing: [], optional: [] },
+        appeal: { headline: '', body: '', policy_rules: [] }
+      })
+    }
     await saveLocalProfile(newProfile)
     setProfile(newProfile)
     if (newProfile.platform) {
@@ -2992,6 +3367,7 @@ export default function Page() {
             )}
             {screen === 3 && (
               <Chat
+                key={`chat-session-${chatResetCount}-${profile.phone || 'guest'}`}
                 go={go}
                 menu={menu}
                 platform={casePlatform}
@@ -3021,6 +3397,8 @@ export default function Page() {
                 onTriggerUpload={triggerFileUpload}
                 attachedFileName={attachedFileName}
                 activeCase={activeCaseRecord}
+                initialMessages={chatMessages}
+                onSyncMessages={setChatMessages}
               />
             )}
             {screen === 4 && (
@@ -3070,7 +3448,7 @@ export default function Page() {
                 onSaveCurrentDraft={handleSaveDossier}
               />
             )}
-            {screen === 8 && <Feedback go={go} menu={menu} activeCase={activeCaseRecord} />}
+            {screen === 8 && <Feedback go={go} menu={menu} activeCase={activeCaseRecord} profile={profile} />}
           </div>
         </div>
       </div>

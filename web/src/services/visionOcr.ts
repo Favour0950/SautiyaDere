@@ -108,7 +108,10 @@ export async function ocrExtractFromImage(
         ],
         generationConfig: {
           temperature: 0.1,
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
         }
       })
     })
@@ -171,7 +174,10 @@ export async function analyzeNoticeText(
         ],
         generationConfig: {
           temperature: 0.1,
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
         }
       })
     })

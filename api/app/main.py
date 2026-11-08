@@ -1,17 +1,20 @@
 """Sauti ya Dere backend.
 
-Privacy rule: request bodies are never logged or stored. The access log is off
-(see the run command in the README and Dockerfile), and validation errors return
+Privacy rule: Driver case narratives, audio recordings, and unredacted evidence
+are never logged or stored. The access log is off, and validation errors return
 only the field location and message, never the submitted text.
 """
 
 import logging
 import re
-from fastapi import APIRouter, FastAPI, Request
+from typing import Annotated
+
+from fastapi import APIRouter, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
+from .admin_view import get_admin_dashboard_html
 from .config import settings
 from .schemas import (
     AnalyzeRequest,
@@ -19,17 +22,39 @@ from .schemas import (
     Appeal,
     Classification,
     Entity,
+    FeedbackRequest,
+    FeedbackResponse,
     HealthResponse,
+    SendOtpRequest,
+    SendOtpResponse,
     SmsReminderRequest,
     SmsReminderResponse,
+    TelemetryPing,
+    TelemetryResponse,
+    VerifyOtpRequest,
+    VerifyOtpResponse,
 )
 from .services.classifier import classify_dispute
 from .services.gap_checker import evaluate_evidence_gaps
-from .services.sms import send_timeline_reminder
+from .services.otp import generate_otp, verify_otp
+from .services.sms import (
+    normalize_phone_number,
+    send_otp_sms,
+    send_timeline_reminder,
+)
+from .services.store import (
+    add_feedback,
+    add_telemetry,
+    get_all_feedback,
+    get_all_sms_logs,
+    get_all_telemetry,
+    get_telemetry_stats,
+    log_sms,
+)
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Sauti ya Dere API", version="0.1.0")
+app = FastAPI(title="Sauti ya Dere API", version="0.2.0")
 api_router = APIRouter(prefix="/api")
 
 # Configure CORS to allow Vercel and local testing
@@ -62,12 +87,163 @@ def health() -> HealthResponse:
     return HealthResponse()
 
 
+# =====================================================================
+# ADMIN DASHBOARD & TELEMETRY OBSERVABILITY
+# =====================================================================
+@app.get("/admin", response_class=HTMLResponse)
+@api_router.get("/admin", response_class=HTMLResponse)
+def admin_dashboard() -> HTMLResponse:
+    """Serve the authenticated Admin Console for TAWU-Kenya and judges."""
+    return HTMLResponse(content=get_admin_dashboard_html(), status_code=200)
+
+
+@api_router.get("/admin/data")
+@app.get("/admin/data")
+def get_admin_data(
+    x_admin_passkey: Annotated[str | None, Header(alias="x-admin-passkey")] = None,
+    passkey: str | None = None,
+) -> dict:
+    """Fetch live telemetry, feedback, and SMS logs for the dashboard."""
+    expected = settings.admin_passkey or "dere2026"
+    provided = (x_admin_passkey or passkey or "").strip()
+    if not provided or provided != expected.strip():
+        raise HTTPException(status_code=401, detail="Unauthorized passkey")
+
+    return {
+        "stats": get_telemetry_stats(),
+        "telemetry": get_all_telemetry(100),
+        "feedback": get_all_feedback(100),
+        "sms_logs": get_all_sms_logs(100),
+    }
+
+
+# =====================================================================
+# AFRICA'S TALKING SMS & OTP ENDPOINTS
+# =====================================================================
+@api_router.post("/sms/send-otp", response_model=SendOtpResponse)
+@app.post("/sms/send-otp", response_model=SendOtpResponse)
+def send_otp(body: SendOtpRequest) -> SendOtpResponse:
+    """Generate and dispatch a 4-digit verification code to the driver."""
+    normalized = normalize_phone_number(body.phone_number)
+    code = generate_otp(normalized)
+    send_otp_sms(normalized, code)
+    return SendOtpResponse(
+        status="sent",
+        message="Verification code sent via SMS gateway.",
+        recipient=normalized,
+        expires_in_seconds=300,
+    )
+
+
+@api_router.post("/sms/verify-otp", response_model=VerifyOtpResponse)
+@app.post("/sms/verify-otp", response_model=VerifyOtpResponse)
+def verify_phone_otp(body: VerifyOtpRequest) -> VerifyOtpResponse:
+    """Verify submitted OTP code against the in-memory TTL store."""
+    normalized = normalize_phone_number(body.phone_number)
+    is_valid, reason = verify_otp(normalized, body.otp)
+    return VerifyOtpResponse(
+        status="success" if is_valid else "invalid",
+        verified=is_valid,
+        message=reason,
+    )
+
+
+@api_router.post("/sms/callback")
+@app.post("/sms/callback")
+async def sms_callback(request: Request):
+    """Africa's Talking Two-Way SMS Webhook.
+
+    Listens on shortcode 20384. Receives incoming SMS matching keyword
+    routing (e.g. 'kamilimu sauti [message]').
+    """
+    form_data = await request.form()
+    sender = form_data.get("from") or "Unknown"
+    text = form_data.get("text") or ""
+
+    logger.info("Received incoming SMS from %s: %s", sender, text)
+
+    # Strip the routing prefix if present (e.g., 'kamilimu sauti')
+    cleaned_comment = re.sub(r"^kamilimu\s+sauti\s*", "", text, flags=re.I).strip()
+    if not cleaned_comment:
+        cleaned_comment = text.strip()
+
+    # Log into feedback table and SMS logs
+    add_feedback(
+        rating=None,
+        comments=cleaned_comment,
+        phone=str(sender),
+        source="sms",
+    )
+    log_sms(
+        phone=str(sender),
+        message=text,
+        sms_type="inbound_feedback",
+        direction="inbound",
+        status="received",
+    )
+
+    return {"status": "ok", "action": "recorded"}
+
+
+@api_router.post("/notify/sms", response_model=SmsReminderResponse)
+@app.post("/notify/sms", response_model=SmsReminderResponse)
+def notify_sms(body: SmsReminderRequest) -> SmsReminderResponse:
+    """Dispatches NTSA Legal Notice 120 timeline reminders."""
+    result = send_timeline_reminder(
+        phone_number=body.phone_number,
+        case_ref=body.case_ref,
+        days_remaining=body.days_remaining,
+    )
+    return SmsReminderResponse(**result)
+
+
+# =====================================================================
+# DRIVER FEEDBACK & ZERO-PII TELEMETRY ENDPOINTS
+# =====================================================================
+@api_router.post("/feedback", response_model=FeedbackResponse)
+@app.post("/feedback", response_model=FeedbackResponse)
+def submit_feedback(body: FeedbackRequest) -> FeedbackResponse:
+    """Record direct in-app driver feedback and ratings."""
+    feedback_id = add_feedback(
+        rating=body.rating,
+        comments=body.comments,
+        phone=body.phone,
+        platform=body.platform,
+        source="web",
+    )
+    return FeedbackResponse(status="success", feedback_id=feedback_id)
+
+
+@api_router.post("/telemetry", response_model=TelemetryResponse)
+@app.post("/telemetry", response_model=TelemetryResponse)
+def record_telemetry(body: TelemetryPing) -> TelemetryResponse:
+    """Record a zero-PII model performance telemetry ping.
+
+    Adheres strictly to the Dignity Principle: No driver personal narratives,
+    names, or specific locations are ever accepted or stored.
+    """
+    event_id = add_telemetry(
+        predicted_case_type=body.predicted_case_type,
+        model_confidence=body.model_confidence,
+        inversion_override=body.inversion_override,
+        overridden_case_type=body.overridden_case_type,
+        entities_detected_count=body.entities_detected_count,
+        readiness_score=body.readiness_score,
+        platform=body.platform,
+    )
+    return TelemetryResponse(status="success", event_id=event_id)
+
+
+# =====================================================================
+# TASK T31 ANALYZE PIPELINE (SETFIT CLASSIFIER + GAP AUDIT)
+# =====================================================================
 def _run_analyze_pipeline(body: AnalyzeRequest) -> AnalyzeResponse:
     """Executes the complete Task T31 legal intake and triage pipeline."""
     # 1. PII Redaction (KDPA 2019 compliance)
     redacted_text = body.narrative
     try:
         from .services.redaction import redact
+
         res = redact(body.narrative)
         redacted_text = res.text
     except Exception as exc:
@@ -85,6 +261,7 @@ def _run_analyze_pipeline(body: AnalyzeRequest) -> AnalyzeResponse:
     entities: list[Entity] = []
     try:
         from .services.extraction import extract
+
         entities = extract(redacted_text)
     except Exception as exc:
         logger.warning("Fact extraction service failed (%s); using regex parser.", exc)
@@ -109,7 +286,7 @@ def _run_analyze_pipeline(body: AnalyzeRequest) -> AnalyzeResponse:
             entities.append(Entity(label="MONEY", text=m.strip()))
         for loc in [
             "Westlands", "JKIA", "CBD", "Town", "Upper Hill", "Kilimani",
-            "Karen", "Eastleigh", "Ngong Road", "Rongai", "Airport", "Gikomba"
+            "Karen", "Eastleigh", "Ngong Road", "Rongai", "Airport", "Gikomba",
         ]:
             if re.search(rf"\b{loc}\b", body.narrative, re.I):
                 entities.append(Entity(label="LOCATION", text=loc))
@@ -154,17 +331,6 @@ def _run_analyze_pipeline(body: AnalyzeRequest) -> AnalyzeResponse:
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     return _run_analyze_pipeline(body)
-
-
-@api_router.post("/notify/sms", response_model=SmsReminderResponse)
-@app.post("/notify/sms", response_model=SmsReminderResponse)
-def notify_sms(body: SmsReminderRequest) -> SmsReminderResponse:
-    result = send_timeline_reminder(
-        phone_number=body.phone_number,
-        case_ref=body.case_ref,
-        days_remaining=body.days_remaining,
-    )
-    return SmsReminderResponse(**result)
 
 
 app.include_router(api_router)
