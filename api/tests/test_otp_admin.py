@@ -118,3 +118,5 @@ def test_admin_dashboard_auth():
     assert html_res.status_code == 200
     assert "Admin Console Login" in html_res.body.decode("utf-8")
     assert "No Africa&apos;s Talking SMS events logged yet." in html_res.body.decode("utf-8")
+
+

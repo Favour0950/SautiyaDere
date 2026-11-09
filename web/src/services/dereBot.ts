@@ -33,6 +33,8 @@ export type IntakeLanguage = 'en' | 'sw'
  * Scrubs Kenyan phone numbers, vehicle registrations, and national IDs before network transmission.
  */
 export function scrubPII(text: string): string {
+  // Guard: if not a string (null/undefined/object from unexpected Gemini response), coerce safely
+  if (typeof text !== 'string') return String(text ?? '')
   return text
     // Kenyan Mobile numbers: 07xx, 01xx, +254 7xx
     .replace(/(?:\+?254|0)[\s-]?[17]\d{2}[\s-]?\d{3}[\s-]?\d{3}\b/g, '<PHONE>')

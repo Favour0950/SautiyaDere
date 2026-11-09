@@ -156,9 +156,23 @@ async def sms_callback(request: Request):
     Listens on shortcode 20384. Receives incoming SMS matching keyword
     routing (e.g. 'kamilimu sauti [message]').
     """
-    form_data = await request.form()
-    sender = form_data.get("from") or "Unknown"
-    text = form_data.get("text") or ""
+    # Extract form fields safely with fallback for environments without python-multipart
+    sender = "Unknown"
+    text = ""
+    try:
+        form_data = await request.form()
+        sender = form_data.get("from") or "Unknown"
+        text = form_data.get("text") or ""
+    except Exception as parse_err:
+        logger.warning("request.form() failed (%s); falling back to raw body parsing.", parse_err)
+        try:
+            import urllib.parse
+            raw = (await request.body()).decode("utf-8", errors="ignore")
+            qs = urllib.parse.parse_qs(raw)
+            sender = (qs.get("from") or ["Unknown"])[0]
+            text = (qs.get("text") or [""])[0]
+        except Exception as body_err:
+            logger.error("Raw body parsing also failed: %s", body_err)
 
     logger.info("Received incoming SMS from %s: %s", sender, text)
 

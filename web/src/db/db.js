@@ -59,8 +59,12 @@ export async function getLocalProfile(id = DEFAULT_PROFILE_ID) {
  * @returns {Promise<number>} The generated or updated numeric case ID
  */
 export async function saveCase(caseData = {}) {
+  // Deep-clone via JSON to strip any accidental DOM event objects (PointerEvent etc.)
+  // that cannot be serialised by IndexedDB's structured clone algorithm.
+  let safeData = caseData;
+  try { safeData = JSON.parse(JSON.stringify(caseData)); } catch (_) { /* keep original */ }
   const record = {
-    ...caseData,
+    ...safeData,
     created_at: caseData.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
     status: caseData.status || 'draft',
