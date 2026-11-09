@@ -320,8 +320,9 @@ export function generateOfflineDereBotReply(
       ? 'Nambari ya OB (Occurrence Book) ni kumbukumbu rasmi inayotolewa kituo cha polisi unapowasilisha ripoti. Ikiwa kuna mashtaka ya jinai, jukwaa la kidijitali halina mamlaka ya kisheria ya kuhukumu, lakini unashauriwa kupata mwanasheria au usaidizi kutoka Kituo cha Sheria kabla ya kutoa kauli yoyote.'
       : 'In Kenya, an OB (Occurrence Book) number is the official reference issued when a matter is reported at a police station. While platforms cannot act as a court of law, serious police matters require formal legal representation. You should consult an advocate or legal aid like Kituo cha Sheria promptly.'
   } else if (language === 'sw') {
-    const uploadedDocs = evidenceHeld.length > 0
-      ? `Ninaona tayari umepakia: ${evidenceHeld.map((k) => k.replace(/_/g, ' ').toLowerCase()).join(', ')}. `
+    const safeDocs = (evidenceHeld || []).filter((k) => typeof k === 'string' && k.trim().length > 0)
+    const uploadedDocs = safeDocs.length > 0
+      ? `Ninaona tayari umepakia: ${safeDocs.map((k) => k.replace(/_/g, ' ').toLowerCase()).join(', ')}. `
       : ''
     if (!hasDate && !hasTime && locations.length === 0 && ocrFacts.length === 0) {
       reply = `${uploadedDocs}Pole sana dere kwa hii kusimamishwa na ${platform}. Je, safari hii ilifanyika lini na saa ngapi, kutoka wapi hadi wapi?`
@@ -336,8 +337,9 @@ export function generateOfflineDereBotReply(
     }
   } else {
     // English default
-    const uploadedDocs = evidenceHeld.length > 0
-      ? `I see you have already attached: ${evidenceHeld.map((k) => k.replace(/_/g, ' ').toLowerCase()).join(', ')}. `
+    const safeDocs = (evidenceHeld || []).filter((k) => typeof k === 'string' && k.trim().length > 0)
+    const uploadedDocs = safeDocs.length > 0
+      ? `I see you have already attached: ${safeDocs.map((k) => k.replace(/_/g, ' ').toLowerCase()).join(', ')}. `
       : ''
     if (!hasDate && !hasTime && locations.length === 0 && ocrFacts.length === 0) {
       reply = `${uploadedDocs}I understand this suspension by ${platform} is frustrating. Could you tell me when this trip occurred (date & time), and what the pickup/drop-off route was?`
@@ -390,14 +392,16 @@ export async function sendDereBotMessage({
     return generateOfflineDereBotReply(messages, platform, noticeReason, ocrFacts, evidenceHeld, language)
   }
 
+  const safeDocs = (evidenceHeld || []).filter((k) => typeof k === 'string' && k.trim().length > 0)
   const evidenceContext =
-    evidenceHeld.length > 0
-      ? `\nDriver has already uploaded: ${evidenceHeld.map((k) => k.replace(/_/g, ' ')).join(', ')}.`
+    safeDocs.length > 0
+      ? `\nDriver has already uploaded: ${safeDocs.map((k) => k.replace(/_/g, ' ')).join(', ')}.`
       : ''
 
+  const safeOcrFacts = (ocrFacts || []).filter((e) => e && typeof e.label === 'string' && typeof e.text === 'string')
   const ocrContext =
-    ocrFacts.length > 0
-      ? `\nFacts already extracted from uploaded documents (do NOT ask about these again):\n${ocrFacts.map((e) => `- ${e.label}: ${e.text}`).join('\n')}`
+    safeOcrFacts.length > 0
+      ? `\nFacts already extracted from uploaded documents (do NOT ask about these again):\n${safeOcrFacts.map((e) => `- ${e.label}: ${e.text}`).join('\n')}`
       : ''
 
   // Using gemini-3.8-flash endpoint

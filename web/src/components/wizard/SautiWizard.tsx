@@ -780,7 +780,7 @@ function Intake({
             Upload Suspension Notice <span className="text-xs font-normal text-slate-500">(Optional)</span>
           </label>
           <div
-            onClick={onTriggerUpload}
+            onClick={() => onTriggerUpload()}
             className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 cursor-pointer hover:border-[#1E5E3A] transition text-center"
           >
             <div className="flex size-11 items-center justify-center rounded-xl bg-[#E9F3ED] text-[#1E5E3A]">
@@ -1256,7 +1256,7 @@ function Chat({
             <button
               type="button"
               aria-label="Attach evidence"
-              onClick={onTriggerUpload}
+              onClick={() => onTriggerUpload()}
               className="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition"
               title="Attach document or screenshot"
             >
@@ -2803,7 +2803,7 @@ export default function Page() {
 
     setUploadWarning(null)
     const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || ''
-    const docKey = uploadTargetDoc || (screen === 2 ? 'SUSPENSION_NOTICE' : 'TRIP_RECEIPT_SCREENSHOT')
+    const docKey = (typeof uploadTargetDoc === 'string' && uploadTargetDoc) || (screen === 2 ? 'SUSPENSION_NOTICE' : 'TRIP_RECEIPT_SCREENSHOT')
     setUploadTargetDoc(null)
 
     if (apiKey && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
@@ -2883,7 +2883,8 @@ export default function Page() {
   }
 
   const triggerFileUpload = (targetDoc?: string) => {
-    setUploadTargetDoc(targetDoc || null)
+    const safeTarget = typeof targetDoc === 'string' ? targetDoc : null
+    setUploadTargetDoc(safeTarget)
     const el = document.getElementById('notice-upload') as HTMLInputElement | null
     if (el) {
       el.value = ''
